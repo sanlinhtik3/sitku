@@ -2599,7 +2599,7 @@ export default function KnowledgeWorkspacePage() {
               <ScrollArea className="flex-1 min-h-0">
                 <div className="mx-auto max-w-3xl px-5 md:px-10 py-7 md:py-10 space-y-8 md:space-y-10">
                   <div>
-                    <h2 className="text-2xl font-semibold tracking-tight text-[var(--bb-text-1)]">{SETTINGS_META[settingsPane].title}</h2>
+                    <DialogTitle className="text-2xl font-semibold tracking-tight text-[var(--bb-text-1)]">{SETTINGS_META[settingsPane].title}</DialogTitle>
                     <p className="mt-1.5 text-sm text-[var(--bb-text-3)]">{SETTINGS_META[settingsPane].subtitle}</p>
                   </div>
                   {settingsPane === "general" && (
