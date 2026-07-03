@@ -1,0 +1,1 @@
+ALTER TABLE public.bot_settings ADD COLUMN group_bot_allow_web_search boolean DEFAULT false;

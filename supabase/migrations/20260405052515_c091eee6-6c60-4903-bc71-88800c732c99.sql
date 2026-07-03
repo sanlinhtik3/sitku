@@ -1,0 +1,1 @@
+ALTER TABLE ai_user_settings ADD COLUMN IF NOT EXISTS notion_workspace_name text;

@@ -1,0 +1,1 @@
+ALTER TABLE public.bot_settings ADD COLUMN IF NOT EXISTS group_bot_custom_instruction TEXT DEFAULT NULL;

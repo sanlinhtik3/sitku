@@ -1,0 +1,5 @@
+
+ALTER TABLE public.bot_settings
+  ADD COLUMN IF NOT EXISTS group_bot_token TEXT DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS group_bot_username TEXT DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS group_bot_name TEXT DEFAULT NULL;

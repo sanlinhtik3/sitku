@@ -1,0 +1,1 @@
+ALTER TABLE public.ai_user_settings ADD COLUMN IF NOT EXISTS disabled_connectors JSONB DEFAULT '[]'::jsonb;

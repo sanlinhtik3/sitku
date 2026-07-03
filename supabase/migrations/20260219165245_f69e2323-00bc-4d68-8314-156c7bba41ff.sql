@@ -1,0 +1,4 @@
+
+ALTER TABLE public.broadcast_channels
+  ADD COLUMN IF NOT EXISTS bot_token TEXT DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS bot_username TEXT DEFAULT NULL;

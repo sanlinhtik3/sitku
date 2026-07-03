@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS idx_autonomous_tasks_session_created ON public.autonomous_tasks (session_id, created_at DESC); CREATE INDEX IF NOT EXISTS idx_autonomous_tasks_user_status_updated ON public.autonomous_tasks (user_id, status, updated_at DESC);

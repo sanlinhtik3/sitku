@@ -1,0 +1,1 @@
+ALTER TABLE agent_heartbeats ALTER COLUMN cron_expression DROP NOT NULL;

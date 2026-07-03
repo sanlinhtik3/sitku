@@ -1,0 +1,3 @@
+ALTER TABLE public.agent_heartbeats
+  ADD COLUMN action_count INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN skip_count INTEGER NOT NULL DEFAULT 0;

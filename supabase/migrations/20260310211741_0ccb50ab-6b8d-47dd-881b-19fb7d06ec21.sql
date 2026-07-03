@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_chat_sessions ADD COLUMN IF NOT EXISTS session_instructions text;

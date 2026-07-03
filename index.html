@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en-MM">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+    <title>Sitku</title>
+    <meta name="description" content="Sitku is a focused AI agent workspace for chat, tools, memory, automations, and connected agent workflows.">
+    <meta name="author" content="Sitku" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#0a0f1e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sitku" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="apple-touch-icon" href="/pwa-192x192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+    
+    <!-- Synchronous Theme Loader - Runs BEFORE React loads -->
+    <script>
+      (function() {
+        try {
+          const bootAccent = localStorage.getItem('boot-accent') || '#f4d35e';
+          document.documentElement.style.setProperty('--boot-accent', bootAccent);
+          const cachedTheme = localStorage.getItem('app-theme-settings');
+          if (cachedTheme) {
+            const themeData = JSON.parse(cachedTheme);
+            applyTheme(themeData.primary_color);
+          }
+        } catch (e) {
+          console.warn('Failed to load cached theme:', e);
+        }
+        
+        function applyTheme(primaryColor) {
+          const root = document.documentElement;
+          root.style.setProperty('--primary', primaryColor);
+          root.style.setProperty('--secondary', primaryColor);
+          root.style.setProperty('--accent', primaryColor);
+          root.style.setProperty('--ring', primaryColor);
+          
+          const [h, s, l] = primaryColor.split(' ').map(v => parseFloat(v.replace('%', '')));
+          root.style.setProperty('--gradient-primary', `linear-gradient(135deg, hsl(${h} ${s}% ${l}%) 0%, hsl(${h} ${Math.max(s - 7, 0)}% ${Math.max(l - 5, 0)}%) 100%)`);
+          root.style.setProperty('--gradient-accent', `linear-gradient(135deg, hsl(${h} ${s}% ${l}%) 0%, hsl(${h} ${Math.max(s - 7, 0)}% ${Math.max(l - 5, 0)}%) 100%)`);
+          root.style.setProperty('--shadow-glow', `0 0 40px hsl(${h} ${s}% ${l}% / 0.2)`);
+          root.style.setProperty('--shadow-card', `0 4px 12px -4px hsl(${h} ${s}% ${l}% / 0.1)`);
+          root.style.setProperty('--accent-glow', `${h} ${s}% ${l}% / 0.15`);
+          root.style.setProperty('--sidebar-primary', primaryColor);
+          root.style.setProperty('--sidebar-ring', primaryColor);
+        }
+      })();
+    </script>
+    
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    
+    
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://storage.googleapis.com/gpt-engineer-file-uploads/56gIRtNnbycVbtO7mlSkwA164w73/social-images/social-1765193984612-zoecrypto.png">
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@sitku" />
+    <meta name="twitter:image" content="https://storage.googleapis.com/gpt-engineer-file-uploads/56gIRtNnbycVbtO7mlSkwA164w73/social-images/social-1765193984612-zoecrypto.png">
+    
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  <meta property="og:title" content="Sitku">
+  <meta name="twitter:title" content="Sitku">
+  <meta property="og:description" content="Sitku is a focused AI agent workspace for chat, tools, memory, automations, and connected agent workflows.">
+  <meta name="twitter:description" content="Sitku is a focused AI agent workspace for chat, tools, memory, automations, and connected agent workflows.">
+</head>
+
+  <body style="background-color: #000000; margin: 0; height: 100%;">
+    <div id="root">
+      <style>
+        @keyframes zc-spin { to { transform: rotate(360deg); } }
+        @keyframes zc-pulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+        .zc-boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; font-family: Inter, system-ui, sans-serif; color: #e2e8f0; }
+        .zc-spinner { width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,0.08); border-top-color: var(--boot-accent, #f4d35e); animation: zc-spin 0.85s linear infinite; }
+        .zc-brand { font-size: 13px; letter-spacing: 0.18em; font-weight: 600; color: var(--boot-accent, #f4d35e); animation: zc-pulse 1.6s ease-in-out infinite; }
+      </style>
+      <div class="zc-boot">
+        <div class="zc-spinner"></div>
+        <div class="zc-brand">Sitku</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,122 @@
+project_id = "ixtcytrohsuapazvockm"
+
+[functions.publish-scheduled-posts]
+verify_jwt = false
+
+[functions.render-widget]
+verify_jwt = false
+
+[functions.check-rate-limit]
+verify_jwt = false
+
+[functions.log-auth-attempt]
+verify_jwt = false
+
+[functions.request-password-reset]
+verify_jwt = false
+
+[functions.resend-verification-email]
+verify_jwt = false
+
+[functions.track-user-session]
+verify_jwt = true
+
+[functions.verify-2fa-login]
+verify_jwt = false
+
+[functions.lookup-user-for-invite]
+verify_jwt = true
+
+[functions.sync-profile-emails]
+verify_jwt = true
+
+[functions.send-custom-verification-email]
+verify_jwt = false
+
+[functions.get-auth-status]
+verify_jwt = false
+
+[functions.signup-with-custom-email]
+verify_jwt = false
+
+[functions.flowstate-ai-insights]
+verify_jwt = true
+
+[functions.get-exchange-rates]
+verify_jwt = false
+
+[functions.telegram-webhook]
+verify_jwt = false
+
+[functions.easy-srt-process]
+verify_jwt = true
+# timeout = 180
+
+[functions.agent-chat]
+verify_jwt = false
+# timeout = 120
+
+[functions.manage-agent-prompts]
+verify_jwt = true
+
+[functions.sync-kb-embeddings]
+verify_jwt = false
+# timeout = 120
+
+[functions.test-gemini-api-key]
+verify_jwt = false
+
+[functions.process-hive-job]
+verify_jwt = false
+# timeout = 120
+
+[functions.app-health-check]
+verify_jwt = false
+
+[functions.ai-doctor-analyze]
+verify_jwt = false
+# timeout = 120
+
+[functions.agent-heartbeat]
+verify_jwt = false
+# timeout = 120
+
+[functions.provision-missing-heartbeats]
+verify_jwt = false
+# timeout = 120
+
+[functions.get-vapid-key]
+verify_jwt = false
+[functions.send-push-notification]
+verify_jwt = false
+
+[functions.webhook-receiver]
+verify_jwt = false
+
+[functions.generate-sitemap]
+verify_jwt = false
+
+[functions.og-image]
+verify_jwt = false
+
+[functions.agent-heartbeat-worker]
+verify_jwt = false
+# timeout = 120
+
+[functions.search-knowledge]
+verify_jwt = false
+
+[functions.gemini-tts]
+verify_jwt = false
+
+[functions.beebot-orchestrator]
+verify_jwt = false
+
+[functions.database-cleanup]
+verify_jwt = false
+
+[functions.memory-worker]
+verify_jwt = false
+
+[functions.suggest-followups]
+verify_jwt = false

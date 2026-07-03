@@ -1,0 +1,50 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+release
+*.local
+
+# Environment variables — never commit any .env
+.env
+.env.*
+!.env.example
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local Runtime Databases & Vaults (Offline-first personal data)
+*.sqlite
+*.sqlite*
+*.db
+app.json
+*Vault*/
+*vault*/
+vault/
+
+# Personal AI & Dev Scratch Workspaces
+.claude/
+.gemini/
+.cursor/
+.lovable/
+scratch/
+tmp/
+
+# Personal vault notes copied into the repo root (dev-only)
+/BeeBot Architecture.md

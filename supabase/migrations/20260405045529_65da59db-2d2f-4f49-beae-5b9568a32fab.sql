@@ -1,0 +1,1 @@
+ALTER TABLE public.ai_user_settings ADD COLUMN IF NOT EXISTS notion_api_key TEXT DEFAULT NULL;

@@ -1,0 +1,2 @@
+ALTER TABLE public.user_memories ADD COLUMN IF NOT EXISTS pinned boolean NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_user_memories_user_pinned ON public.user_memories (user_id, pinned) WHERE pinned = true;

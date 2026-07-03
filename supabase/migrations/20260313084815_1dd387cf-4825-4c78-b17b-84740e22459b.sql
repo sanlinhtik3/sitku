@@ -1,0 +1,1 @@
+ALTER TABLE public.autonomous_tasks ALTER COLUMN progress_pct SET DEFAULT 0;

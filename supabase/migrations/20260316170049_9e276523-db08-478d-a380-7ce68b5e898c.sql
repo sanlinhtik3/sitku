@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_ai_usage ADD COLUMN IF NOT EXISTS cache_type TEXT DEFAULT 'none';

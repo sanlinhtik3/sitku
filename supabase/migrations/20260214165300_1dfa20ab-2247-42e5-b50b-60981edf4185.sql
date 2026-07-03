@@ -1,0 +1,1 @@
+ALTER TABLE public.feature_flags ADD COLUMN show_on_dashboard boolean NOT NULL DEFAULT true;

@@ -1,0 +1,1 @@
+ALTER TABLE public.ai_model_settings ADD COLUMN IF NOT EXISTS bypass_iu_for_personal_key BOOLEAN DEFAULT true;

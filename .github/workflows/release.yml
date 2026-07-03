@@ -1,0 +1,53 @@
+name: Build & Release Desktop
+
+# Push a version tag to cut a release:
+#   npm version patch        # bumps package.json + creates the tag
+#   git push --follow-tags   # pushes main + the tag → triggers this workflow
+# electron-builder builds the .dmg (macOS) + .exe (Windows) and, because
+# package.json `build.publish` already points at this GitHub repo, uploads
+# them straight to the matching GitHub Release with download links.
+# (Manual runs: Actions tab → this workflow → Run workflow.)
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # lets the default GITHUB_TOKEN create/update the Release
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # lovable-tagger peer-conflicts with vite 8 → the repo installs with this flag.
+      - run: npm ci --legacy-peer-deps
+
+      # package.json ships version 0.0.0; align it to the tag so the release
+      # (and installer filenames) read v1.2.3 instead of v0.0.0.
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+
+      - name: Build installer + publish to GitHub Release
+        shell: bash
+        run: npm run dist:${{ matrix.platform }} -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No Apple/Windows signing certs in CI → build unsigned, don't hunt for a cert.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
