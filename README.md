@@ -1,25 +1,28 @@
 # Sitku (စိတ်ကူး)
 
-**Sitku** is a powerful, local-first, offline-ready AI workspace and personal knowledge system built for macOS and modern browsers. Designed with user privacy and speed in mind, Sitku turns local Markdown files and Obsidian vaults into an intelligent agentic environment.
+[![Version](https://img.shields.io/badge/version-2026.7.3-blue.svg)](https://sitku.space)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Web-purple.svg)](https://sitku.space)
+[![Architecture](https://img.shields.io/badge/architecture-Local--First%20%7C%20Offline--Ready-green.svg)](https://sitku.space)
 
 ---
 
-## ✨ Key Features
+## 🌟 စိတ်ကူး (Sitku) ဆိုတာ ဘာလဲ?
 
-- **🔒 Local-First Architecture:** All configuration, caches, and memory databases live safely inside your local filesystem (`~/.sitku`). Zero mandatory cloud lock-in.
-- **📁 Obsidian Vault Compatibility:** Seamlessly open existing Obsidian Markdown vaults or create new workspaces. Full support for per-vault appearance, custom themes, and font configurations (`appearance.json`, `workspace.json`, `core-plugins.json`).
-- **⚡ Native Desktop & Web App:** Built on top of Electron, Vite, React, and TypeScript with ultra-lightweight production bundling tailored for macOS Apple Silicon (`arm64`) and Universal builds.
-- **🤖 Autonomous AI Assistant:** Built-in agentic runtime with local memory indexing, skill execution, and automated workflow pipelines.
+စိတ်ကူး app က note taking app ပါ။ သူ့ကို အဓိက Productivity နဲ့ Data တွေကို Visualization နဲ့ ကြည့်ချင်သူတွေအတွက် အသုံးဝင်ပါတယ်။ 
+
+ဘာလုပ်လို့ရလဲဆိုတော့ နေ့စဉ် ကိုယ့်ရဲ့စိတ်ကူးတွေကို ကွန်ပျူတာထဲမှာပဲ offline သိမ်းဆည်းတာ နေ့စဉ် ဝင်ငွေ၊ ထွက်ငွေ၊ အလုပ်က အမြတ်တွေကို မှတ်သားလို့ရတယ်။
+
+တကယ်လို့ ကိုယ်က Creator ဆိုရင် page ကနေ ဝင်တဲ့ income, outcome, post kpi တွေကို တစ်နေရာတည်းကနေ Visualization ကောင်းအောင် dashboard နဲ့ တစ်နေရာတည်းမှာ ကြည့်လို့ရတယ်။
 
 ---
 
-## 🚀 Quickstart
+## 🚀 Quickstart & Development
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (v18+)
-- macOS (Apple Silicon M-series recommended)
+- macOS (Apple Silicon M-series recommended) or Windows 10/11
 
-### Installation & Run
+### Local Installation
 
 ```bash
 # 1. Clone the repository
@@ -29,7 +32,7 @@ cd sitku
 # 2. Install dependencies
 npm install
 
-# 3. Start Desktop App with Live Hot-Reload (Recommended for development)
+# 3. Start Desktop App with Live Hot-Reload
 npm run desktop:dev
 ```
 
@@ -39,32 +42,31 @@ npm run desktop:dev
 
 | Command | Description |
 | :--- | :--- |
-| `npm run desktop:dev` | Runs the Vite dev server + Electron with instant hot-reloading. |
+| `npm run desktop:dev` | Launches Vite dev server + Electron with instant hot-reloading. |
 | `npm run desktop` | Compiles the production bundle (`dist/`) and launches Electron. |
 | `npm run dist:mac:arm64` | Packages a native macOS Apple Silicon (`.dmg` / `.app`) installer. |
-| `npm run dist:mac:universal` | Packages a Universal macOS installer (Intel + M-series). |
+| `npm run dist:win` | Packages a Windows NSIS Setup Installer (`.exe`). |
 | `npm run build` | Builds static PWA / Web release bundle. |
 
 ---
 
-## 📂 System Storage Layout (`~/.sitku`)
-
-When running locally, Sitku stores your workspace state securely in your home directory:
+## 📂 Local Storage Architecture (`~/.sitku`)
 
 ```text
 ~/.sitku/
- ├── app.json             # Global application settings & recent vaults
- ├── appearance.json      # Theme, fonts, accent colors, and UI preferences
- ├── workspace.json       # Layout, bookmarks, and vault configuration
- ├── core-plugins.json    # Enabled skills and agent core utilities
- ├── sitku-agent.sqlite   # Local SQLite agent memory & vector store
- ├── themes/              # Custom user-provided CSS themes
- └── vault/               # Default fallback local markdown vault
+ ├── app.json             # Global application configuration & vault history
+ ├── appearance.json      # UI themes, custom fonts, and accent settings
+ ├── workspace.json       # Layout panels, open tabs, and bookmarks
+ ├── core-plugins.json    # Active AI skills and agent feature toggles
+ ├── sitku-agent.sqlite   # Local SQLite memory engine & vector embeddings
+ ├── themes/              # Custom user-created CSS themes
+ └── vault/               # Primary local markdown knowledge base
 ```
 
 ---
 
-## 📄 Versioning & License
+## 📄 License & Versioning
 
 - **Version:** Calendar Versioning (`YYYY.M.D` e.g., `2026.7.3`)
-- **Domain:** [sitku.space](https://sitku.space)
+- **Official Portal:** [sitku.space](https://sitku.space)
+- **Author:** ZOE & Sitku Contributors
