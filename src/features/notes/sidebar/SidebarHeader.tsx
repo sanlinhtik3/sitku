@@ -170,7 +170,7 @@ export function SidebarHeader({
                         type="button"
                         title="Remove from Recent"
                         aria-label="Remove from Recent"
-                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         onClick={(e) => { e.stopPropagation(); e.preventDefault(); onForgetVault(recent.path); }}
                         className="ml-2 shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-[rgba(255,255,255,0.08)] hover:text-[#ededed] group-hover/vault:opacity-100 focus:opacity-100"
                       >

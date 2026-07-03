@@ -1701,21 +1701,37 @@ export default function KnowledgeWorkspacePage() {
   }, [clearWorkspaceSession, newVaultName, refreshNotes, refreshSkills, refreshVaults, vault]);
 
   const handleSwitchVault = useCallback(async (vaultPath: string) => {
+    if (isVaultBusy || vaultPath === activeVault?.path) return; // no-op when already active
     setIsVaultBusy(true);
     try {
-      const switched = await vault.switchVault(vaultPath);
-      clearWorkspaceSession();
-      await refreshVaults();
-      await refreshSkills();
-      await refreshNotes(null);
-      toast.success(`Switched to ${switched.name}`);
+      await vault.switchVault(vaultPath);
+      // Load ALL of the new vault's data before touching any UI state, then swap it
+      // in one synchronous batch. The old flow blanked the editor (activePath=null)
+      // and awaited three refreshes in series — each await = a separate render, which
+      // is the flicker. One await boundary → one re-render → a smooth switch.
+      const [active, recents, list, entries] = await Promise.all([
+        vault.getActiveVault(),
+        vault.listVaults(),
+        notes.listNotes({ limit: 500 }),
+        notes.listEntries(),
+      ]);
+      clearWorkspaceSession();              // clears old tabs/split/draft + collapses folders
+      setActiveVault(active);
+      setRecentVaults(recents);
+      setNoteList(list);
+      setEntryList(sortVaultEntries(entries));
+      const first = list[0]?.path || null;  // batched with the null above → the blank never renders
+      activePathRef.current = first;
+      setActivePath(first);
+      refreshSkills();                        // skills don't affect the tree/editor — no need to await
+      toast.success(`Switched to ${active.name}`);
     } catch (error) {
       console.error("[Workspace] Switch vault failed", error);
       toast.error(error instanceof Error ? error.message : "Failed to switch vault");
     } finally {
       setIsVaultBusy(false);
     }
-  }, [clearWorkspaceSession, refreshNotes, refreshSkills, refreshVaults, vault]);
+  }, [activeVault, isVaultBusy, notes, vault, clearWorkspaceSession, refreshSkills]);
 
   const handleRevealVault = useCallback(async () => {
     try {
