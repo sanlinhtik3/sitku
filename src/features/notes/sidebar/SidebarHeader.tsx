@@ -76,8 +76,9 @@ export function SidebarHeader({
             <span className="h-3 w-3 rounded-full bg-[#28c840]" />
           </div>
         )}
-        {/* Toolbar buttons */}
-        <div className="ml-auto flex items-center gap-0.5">
+        {/* Toolbar buttons — opt OUT of the window-drag region, or macOS eats
+            the clicks (the row above is -webkit-app-region: drag for the title bar). */}
+        <div className="ml-auto flex items-center gap-0.5" style={{ WebkitAppRegion: "no-drag" } as CSSProperties}>
           <Button
             title="Search notes  (⌘ K)"
             aria-label="Search notes"
