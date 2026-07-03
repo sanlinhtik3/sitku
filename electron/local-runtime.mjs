@@ -1357,6 +1357,17 @@ class LocalVaultRepository {
     await this.desktop.revealPath?.(activePath);
   }
 
+  // Drop a vault from the Recent list. Only forgets the entry — the folder and
+  // its notes on disk are untouched, and the active vault can't be forgotten.
+  forgetVault(vaultPath) {
+    const normalized = normalizeVaultPath(vaultPath);
+    if (normalized === normalizeVaultPath(this.getActivePath())) return;
+    const next = this.getRecentVaults()
+      .filter((vault) => vault.path !== normalized)
+      .map((vault) => ({ name: vault.name, path: vault.path, lastOpenedAt: vault.lastOpenedAt }));
+    this.settings.set("vaults.recent", next);
+  }
+
   getRecentVaults() {
     const raw = this.settings.get("vaults.recent");
     const recent = Array.isArray(raw) ? raw : [];

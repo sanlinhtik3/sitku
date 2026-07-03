@@ -7,6 +7,7 @@ import {
   FolderWithFiles,
   ShareCircle,
   CheckCircle,
+  CloseCircle,
   Diskette,
   DoubleAltArrowDown,
   DoubleAltArrowUp,
@@ -37,6 +38,7 @@ interface SidebarHeaderProps {
   onCreateVault: () => void;
   onRevealVault: () => void;
   onSwitchVault: (path: string) => void;
+  onForgetVault: (path: string) => void;
   onExpandAll: () => void;
   onCollapseAll: () => void;
 }
@@ -58,6 +60,7 @@ export function SidebarHeader({
   onCreateVault,
   onRevealVault,
   onSwitchVault,
+  onForgetVault,
   onExpandAll,
   onCollapseAll,
 }: SidebarHeaderProps) {
@@ -152,16 +155,28 @@ export function SidebarHeader({
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>Recent</DropdownMenuLabel>
                 {recentVaults.map((recent) => (
-                  <DropdownMenuItem key={recent.path} onClick={() => onSwitchVault(recent.path)} disabled={isVaultBusy || recent.active}>
+                  <DropdownMenuItem key={recent.path} onClick={() => onSwitchVault(recent.path)} disabled={isVaultBusy || recent.active} className="group/vault flex items-center">
                     {recent.active ? (
                       <CheckCircle className="mr-2 h-4 w-4 text-[var(--beebot-accent)]" />
                     ) : (
                       <Diskette className="mr-2 h-4 w-4" />
                     )}
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1">
                       <span className="block truncate">{recent.name}</span>
                       <span className="block truncate text-[11px] text-muted-foreground">{recent.noteCount || 0} notes</span>
                     </span>
+                    {!recent.active && (
+                      <button
+                        type="button"
+                        title="Remove from Recent"
+                        aria-label="Remove from Recent"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onForgetVault(recent.path); }}
+                        className="ml-2 shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-[rgba(255,255,255,0.08)] hover:text-[#ededed] group-hover/vault:opacity-100 focus:opacity-100"
+                      >
+                        <CloseCircle className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </DropdownMenuItem>
                 ))}
               </>

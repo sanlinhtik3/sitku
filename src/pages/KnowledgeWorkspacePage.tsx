@@ -1021,7 +1021,10 @@ export default function KnowledgeWorkspacePage() {
     setSplitLayout(null);
     setSplitPath(null);
     setSplitNote(null);
-  }, []);
+    // Drop the previous vault's folder-expansion state so the new vault's tree
+    // renders from a clean slate (stale expanded paths hid new files until reload).
+    collapseAllFolders();
+  }, [collapseAllFolders]);
 
   const handleReopenFolder = useCallback(async () => {
     const granted = await fsaStore.ensurePermission();
@@ -1722,6 +1725,16 @@ export default function KnowledgeWorkspacePage() {
     }
   }, [vault]);
 
+  const handleForgetVault = useCallback(async (vaultPath: string) => {
+    try {
+      await vault.forgetVault(vaultPath);
+      await refreshVaults();
+    } catch (error) {
+      console.error("[Workspace] Forget vault failed", error);
+      toast.error("Couldn't remove that vault from Recent");
+    }
+  }, [refreshVaults, vault]);
+
   const handleToggleSkill = useCallback(async (skillId: string, enabled: boolean) => {
     setIsSkillBusy(true);
     try {
@@ -2044,6 +2057,7 @@ export default function KnowledgeWorkspacePage() {
               onCreateVault={() => setCreateVaultOpen(true)}
               onRevealVault={handleRevealVault}
               onSwitchVault={handleSwitchVault}
+              onForgetVault={handleForgetVault}
               onExpandAll={expandAllFolders}
               onCollapseAll={collapseAllFolders}
             />

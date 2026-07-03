@@ -22,4 +22,6 @@ export interface VaultRepository {
   openVault(input?: OpenVaultInput): Promise<VaultInfo | null>;
   switchVault(path: string): Promise<VaultInfo>;
   revealActiveVault(): Promise<void>;
+  // Remove a vault from the Recent list (does not touch the folder on disk).
+  forgetVault(path: string): Promise<void>;
 }

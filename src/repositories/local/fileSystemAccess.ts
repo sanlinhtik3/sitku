@@ -463,6 +463,9 @@ class FsaVaultRepository implements VaultRepository {
   async revealActiveVault(): Promise<void> {
     throw new Error("Open vault location is available in the desktop app.");
   }
+
+  // The browser tracks a single granted folder — there's no recent list to prune.
+  async forgetVault(): Promise<void> {}
 }
 
 export const fsaNotesRepository = new FsaNotesRepository();
