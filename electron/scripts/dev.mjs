@@ -7,6 +7,7 @@ const rendererUrl = "http://127.0.0.1:8080";
 function spawnProcess(command, args, extraEnv = {}) {
   return spawn(command, args, {
     stdio: "inherit",
+    shell: process.platform === "win32",
     env: {
       ...process.env,
       ...extraEnv,

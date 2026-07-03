@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const child = spawn(npmCommand, ["run", "build"], {
   stdio: "inherit",
+  shell: process.platform === "win32",
   env: {
     ...process.env,
     VITE_REPOSITORY_RUNTIME: "local",
