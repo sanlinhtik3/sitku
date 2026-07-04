@@ -144,7 +144,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { jarvisEnabled, jarvisModels, jarvisLiveMode, jarvisWakeWord, geminiKey } from "@/components/jarvis/jarvisBrain";
 import { cn } from "@/lib/utils";
-import { platformFileManager } from "@/lib/desktopChrome";
+import { platformFileManager, reduceEffects } from "@/lib/desktopChrome";
 import { applyAccent } from "@/lib/accentColor";
 import { applyThemeVariables } from "@/lib/theme/themeEngine";
 import { themeStore } from "@/repositories/local/themeStore";
@@ -587,6 +587,7 @@ export default function KnowledgeWorkspacePage() {
   const [jarvisLive, setJarvisLive] = useState(() => jarvisLiveMode.get());
   const [jarvisLiveModel, setJarvisLiveModel] = useState(() => jarvisModels.live());
   const [jarvisWake, setJarvisWake] = useState(() => jarvisWakeWord.get());
+  const [reduceFx, setReduceFx] = useState(() => reduceEffects.get());
   // JARVIS Gemini API key management — view (masked), edit, save, clear. Never expose the raw key
   // in plaintext by default; toggle reveals it only on explicit user action.
   const [jarvisKeyEditing, setJarvisKeyEditing] = useState(false);
@@ -3006,6 +3007,13 @@ export default function KnowledgeWorkspacePage() {
                             <div className="text-sm text-[var(--bb-text-3)]">Match macOS behavior where Electron supports it.</div>
                           </div>
                           <Switch checked={appearanceSettings.nativeMenus} onCheckedChange={(checked) => updateAppearanceSettings({ nativeMenus: checked })} />
+                        </div>
+                        <div className="flex items-center justify-between gap-5 border-t border-[var(--bb-bg-3)] pt-4">
+                          <div>
+                            <div className="font-medium text-[var(--bb-text-1)]">Reduce transparency &amp; effects <span className="ml-1 rounded bg-[var(--bb-bg-4)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--bb-text-3)]">Performance</span></div>
+                            <div className="text-sm text-[var(--bb-text-3)]">Turns off the frosted-glass blur (and pulsing glows). Fixes GPU overheating on the desktop — on by default there. Turn off for the full glass look.</div>
+                          </div>
+                          <Switch checked={reduceFx} onCheckedChange={(checked) => { reduceEffects.set(checked); setReduceFx(checked); }} />
                         </div>
                       </section>
 

@@ -512,17 +512,39 @@ function buildAppMenu() {
 
 // Auto-update via the GitHub Releases feed (see package.json "build.publish").
 // Only runs in a packaged build; in dev there's no update feed. autoDownload is
-// on by default, so we just check, then tell the renderer once it's downloaded.
+// on by default, so we just check, then tell the renderer once it's downloaded or streaming progress.
 function initAutoUpdater() {
   if (!app.isPackaged) return;
+  autoUpdater.on("update-available", (info) => {
+    mainWindow?.webContents.send("beebot:update-status", { status: "available", version: info?.version });
+  });
+  autoUpdater.on("download-progress", (progressObj) => {
+    mainWindow?.webContents.send("beebot:update-progress", {
+      percent: Math.round(progressObj.percent || 0),
+      transferred: progressObj.transferred,
+      total: progressObj.total,
+      bytesPerSecond: progressObj.bytesPerSecond,
+    });
+  });
   autoUpdater.on("update-downloaded", (info) => {
     mainWindow?.webContents.send("beebot:update-downloaded", { version: info?.version });
   });
-  autoUpdater.on("error", (err) => console.error("[BeeBot AutoUpdate]", err));
+  autoUpdater.on("error", (err) => {
+    console.error("[BeeBot AutoUpdate]", err);
+    mainWindow?.webContents.send("beebot:update-error", { message: err?.message || "Download failed" });
+  });
   autoUpdater.checkForUpdates().catch((err) => console.error("[BeeBot AutoUpdate] check failed", err));
 }
 
 ipcMain.handle("beebot:install-update", () => autoUpdater.quitAndInstall());
+ipcMain.handle("beebot:check-for-updates", () => autoUpdater.checkForUpdates().catch((err) => {
+  console.error("[BeeBot AutoUpdate] check failed", err);
+  throw err;
+}));
+ipcMain.handle("beebot:start-download", () => autoUpdater.downloadUpdate().catch((err) => {
+  console.error("[BeeBot AutoUpdate] download failed", err);
+  throw err;
+}));
 
 // Authoritative app version (from the packaged build), for the Settings → About
 // version check. The renderer compares this against the latest GitHub Release.

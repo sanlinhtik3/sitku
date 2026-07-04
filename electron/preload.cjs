@@ -187,6 +187,23 @@ contextBridge.exposeInMainWorld("beebotDesktop", {
     ipcRenderer.on("beebot:update-downloaded", listener);
     return () => ipcRenderer.removeListener("beebot:update-downloaded", listener);
   },
+  onUpdateProgress: (cb) => {
+    const listener = (_event, info) => cb(info);
+    ipcRenderer.on("beebot:update-progress", listener);
+    return () => ipcRenderer.removeListener("beebot:update-progress", listener);
+  },
+  onUpdateError: (cb) => {
+    const listener = (_event, info) => cb(info);
+    ipcRenderer.on("beebot:update-error", listener);
+    return () => ipcRenderer.removeListener("beebot:update-error", listener);
+  },
+  onUpdateStatus: (cb) => {
+    const listener = (_event, info) => cb(info);
+    ipcRenderer.on("beebot:update-status", listener);
+    return () => ipcRenderer.removeListener("beebot:update-status", listener);
+  },
+  checkForUpdates: () => ipcRenderer.invoke("beebot:check-for-updates"),
+  startDownload: () => ipcRenderer.invoke("beebot:start-download"),
   installUpdate: () => ipcRenderer.invoke("beebot:install-update"),
   openMicSettings: () => ipcRenderer.invoke("beebot:open-mic-settings"),
   getVersion: () => ipcRenderer.invoke("beebot:get-version"),

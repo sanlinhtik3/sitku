@@ -39,6 +39,11 @@ declare global {
       // Auto-update (electron-updater). onUpdateReady fires once a new version
       // is downloaded and ready; installUpdate restarts into it.
       onUpdateReady?: (cb: (info: { version: string }) => void) => () => void;
+      onUpdateProgress?: (cb: (info: { percent: number; transferred: number; total: number; bytesPerSecond: number }) => void) => () => void;
+      onUpdateError?: (cb: (info: { message: string }) => void) => () => void;
+      onUpdateStatus?: (cb: (info: { status: string; version?: string }) => void) => () => void;
+      checkForUpdates?: () => Promise<any>;
+      startDownload?: () => Promise<any>;
       installUpdate?: () => Promise<void>;
       openMicSettings?: () => Promise<void>;
       // Authoritative app version (packaged build) for the Settings version check.

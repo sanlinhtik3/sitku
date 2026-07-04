@@ -17,6 +17,25 @@ export const isMacDesktop = () =>
   Boolean(window.beebotDesktop) &&
   /Mac/i.test(navigator.platform || navigator.userAgent);
 
+// Reduce-effects ("eco") mode. Stacked full-screen `backdrop-filter: blur()` (the glass
+// panels + the CFO/Consultant overlays) pegs the GPU and overheats the machine. The CSS
+// mitigation ([data-eco-mode] → no blur/pulse/glow) already exists — this wires it.
+// Default ON in the desktop app (that's where the thermal problem is); off on web.
+// User-overridable via Settings.
+const ECO_KEY = "beebot-reduce-effects";
+export const reduceEffects = {
+  get: (): boolean => {
+    const v = typeof localStorage !== "undefined" ? localStorage.getItem(ECO_KEY) : null;
+    return v === null ? (typeof window !== "undefined" && Boolean(window.beebotDesktop)) : v === "1";
+  },
+  set: (on: boolean) => { localStorage.setItem(ECO_KEY, on ? "1" : "0"); applyReduceEffects(); },
+};
+export const applyReduceEffects = () => {
+  if (typeof document === "undefined") return;
+  if (reduceEffects.get()) document.documentElement.dataset.ecoMode = "true";
+  else delete document.documentElement.dataset.ecoMode;
+};
+
 /** Native file-manager name for the "Reveal in X" menu label — Finder on mac,
  *  Explorer on Windows, Files elsewhere. Defaults to 'Finder' on web (where the
  *  action falls back to path-copy anyway). */

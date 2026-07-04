@@ -9,7 +9,7 @@ import { BeeBotLayout } from "@/layouts/BeeBotLayout";
 import { RepositoryProvider } from "@/repositories/runtime/RepositoryProvider";
 import { isLocalRepositoryRuntime } from "@/repositories/runtime/runtimeMode";
 import { ensurePersistentStorage } from "@/lib/storageDurability";
-import { isMacDesktop, TRAFFIC_LIGHT_SAFE_ZONE } from "@/lib/desktopChrome";
+import { isMacDesktop, TRAFFIC_LIGHT_SAFE_ZONE, applyReduceEffects } from "@/lib/desktopChrome";
 
 import { lazy, Suspense, memo, useEffect } from "react";
 
@@ -78,6 +78,10 @@ const ThemeInitializer = memo(({ children }: { children: React.ReactNode }) => {
       isMacDesktop() ? `${TRAFFIC_LIGHT_SAFE_ZONE}px` : "0px",
     );
   }, []);
+
+  // Reduce-effects mode: kill stacked backdrop-blur (the GPU overheat cause). Default ON
+  // on desktop, off on web; user-overridable in Settings. See desktopChrome.reduceEffects.
+  useEffect(() => { applyReduceEffects(); }, []);
 
   // Pause ALL CSS animations (mesh-drift gradient, "live" pings, spinners) whenever
   // the window is hidden or blurred. Zero visual change while you're using the app —
