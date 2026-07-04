@@ -11,8 +11,8 @@ import { useRepositories } from "@/repositories/runtime/RepositoryProvider";
  * AgentChat) have been removed for the local-first architecture.
  */
 export function BeeBotLayout() {
-  const { notes } = useRepositories();
-  const brain = useMemo(() => makeJarvisBrain(notes), [notes]);
+  const { notes, search } = useRepositories();
+  const brain = useMemo(() => makeJarvisBrain(notes, search), [notes, search]);
   return (
     <div className="h-full w-full bg-background">
       <Outlet />

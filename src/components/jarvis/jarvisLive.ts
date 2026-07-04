@@ -5,32 +5,13 @@
 //
 // ponytail: raw WebSocket, no SDK. The pure DSP/codec helpers are exported + unit-tested
 // (jarvisLive.test.mjs); the socket/audio glue needs a real mic + key to verify E2E.
-import { geminiKey, jarvisModels, type JarvisAction } from "./jarvisBrain";
+import { geminiKey, jarvisModels } from "./jarvisBrain";
+import { TOOL_DECLARATIONS, type ToolExecutor } from "./jarvisTools";
 
 const LIVE_URL =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
 const VOICE = "Kore"; // language-agnostic — Burmese text renders as Burmese speech
-
-// Tools mirror execAction's real actions (a plain chat turn calls no tool).
-const TOOLS = [
-  {
-    functionDeclarations: [
-      { name: "open_cfo", description: "Open the Personal CFO / finance screen." },
-      { name: "open_consultant", description: "Open the Agent Consultant screen." },
-      { name: "close_app", description: "Close the current full-screen app (CFO/Consultant)." },
-      {
-        name: "create_note",
-        description: "Create a new note with a clear title.",
-        parameters: {
-          type: "object",
-          properties: { title: { type: "string", description: "The note title." } },
-          required: ["title"],
-        },
-      },
-    ],
-  },
-];
 
 // Persona for the live call. Same bilingual + confirm-before-act rules as the turn-based
 // brain, but phrased for a continuous phone-call feel (short, natural, no robotic filler).
@@ -40,7 +21,9 @@ export const LIVE_SYSTEM = `You are JARVIS, a warm bilingual (Burmese + English)
 
 Keep replies to one or two short sentences unless asked for detail — long speech is slow to hear. Be conversational: chat, answer, explain, remember what was said earlier in the call.
 
-You have tools: open_cfo, open_consultant, close_app, create_note(title). Use them ONLY when the user clearly asks. Before calling any tool, ASK a short yes/no confirmation out loud in the user's language and wait for them to confirm — never act on a guess. Most turns use no tool at all — just talk.`;
+You can look inside the user's own notes: call search_notes(query) to find relevant notes, and read_note(query) to read one in full. Whenever they ask about their notes, ideas, or anything they wrote, SEARCH FIRST, then answer from what you find — never guess or make up note contents.
+
+App actions — open_cfo, open_consultant, close_app, create_note(title): use ONLY when clearly asked, and ASK a short yes/no confirmation out loud (in the user's language) before calling one. Reading/searching notes needs no confirmation. Most turns use no tool at all — just talk.`;
 
 export type LiveState = "connecting" | "listening" | "speaking" | "closed" | "error";
 
@@ -49,7 +32,7 @@ export interface JarvisLiveOptions {
   onState: (state: LiveState) => void;
   onUserText?: (text: string) => void; // input (what you said) — interim captions
   onModelText?: (text: string) => void; // output (what JARVIS says) — captions
-  onAction?: (action: JarvisAction, title?: string) => void | Promise<void>;
+  onTool?: ToolExecutor; // runs a tool call and returns data fed back to the model
   onError?: (message: string) => void;
 }
 
@@ -128,7 +111,7 @@ export function startJarvisLive(opts: JarvisLiveOptions): JarvisLiveHandle {
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE } } },
         },
         systemInstruction: { parts: [{ text: opts.systemPrompt }] },
-        tools: TOOLS,
+        tools: TOOL_DECLARATIONS,
         inputAudioTranscription: {},
         outputAudioTranscription: {},
       },
@@ -164,9 +147,12 @@ export function startJarvisLive(opts: JarvisLiveOptions): JarvisLiveHandle {
     if (msg.toolCall?.functionCalls?.length) {
       const responses: unknown[] = [];
       for (const c of msg.toolCall.functionCalls) {
-        const action = (c.name === "close_app" ? "close" : c.name) as JarvisAction;
-        try { await opts.onAction?.(action, c.args?.title); } catch { /* ignore — reply already spoken */ }
-        responses.push({ id: c.id, name: c.name, response: { result: "ok" } });
+        // Execute the tool and feed its DATA back so the model can speak about it
+        // (search results / note text), not just a fire-and-forget "ok".
+        let result: Record<string, unknown> = { ok: true };
+        try { result = (await opts.onTool?.(c.name, c.args)) ?? { ok: true }; }
+        catch { result = { error: "tool failed" }; }
+        responses.push({ id: c.id, name: c.name, response: result });
       }
       send({ toolResponse: { functionResponses: responses } });
     }

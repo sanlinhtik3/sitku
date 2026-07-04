@@ -7,6 +7,7 @@ import { useJarvisVoice } from "@/components/jarvis/useJarvisVoice";
 import { getSavedVoiceLanguage } from "@/components/agent-chat/chat-input/VoiceInput";
 import { geminiKey, jarvisEnabled, jarvisLiveMode, type Intent } from "@/components/jarvis/jarvisBrain";
 import { startJarvisLive, LIVE_SYSTEM, type JarvisLiveHandle } from "@/components/jarvis/jarvisLive";
+import type { ToolExecutor } from "@/components/jarvis/jarvisTools";
 
 type Phase = "idle" | "recording" | "thinking" | "confirm" | "speaking" | "resuming";
 
@@ -20,6 +21,7 @@ interface Brain {
   execAction: (action: Intent["action"], title?: string) => Promise<void>;
   offline: (text: string) => Promise<string>;
   reset?: () => void; // clear conversation history (on close)
+  execTool: ToolExecutor; // Live-agent tools (search/read notes + actions)
 }
 
 interface JarvisProps { brain: Brain; }
@@ -257,7 +259,7 @@ export function Jarvis({ brain }: JarvisProps) {
       },
       onUserText: (t) => setHeard(t),
       onModelText: (t) => setReply(t),
-      onAction: (action, title) => brain.execAction(action, title),
+      onTool: (name, args) => brain.execTool(name, args),
       onError: (m) => { if (m !== "no key") toast.error(`JARVIS: ${m}`); },
     });
     liveRef.current = handle;

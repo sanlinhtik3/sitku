@@ -1,4 +1,6 @@
 import type { NotesRepository } from "@/repositories/contracts/notes";
+import type { SearchRepository } from "@/repositories/contracts/search";
+import { makeToolExecutor } from "./jarvisTools";
 
 // JARVIS brain. Primary path: the user's spoken AUDIO goes straight to Gemini, which
 // transcribes + detects language (Burmese/English) + decides intent in one call — far more
@@ -116,12 +118,15 @@ const SCHEMA = {
 let history: Turn[] = [];
 export function resetConversation() { history = []; }
 
-export function makeJarvisBrain(notes: NotesRepository) {
+export function makeJarvisBrain(notes: NotesRepository, search: SearchRepository) {
+  const boundExec = (action: JarvisAction, title?: string) => execAction(notes, action, title);
   return {
     understandAudio,
-    execAction: (action: JarvisAction, title?: string) => execAction(notes, action, title),
+    execAction: boundExec,
     offline: (text: string) => offlineRoute(text),
     reset: resetConversation,
+    // Live-agent tools: search_notes / read_note (vault RAG) + the app actions.
+    execTool: makeToolExecutor(notes, search, boundExec as (a: string, t?: string) => Promise<void>),
   };
 }
 
