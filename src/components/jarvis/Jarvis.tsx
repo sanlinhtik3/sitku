@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useJarvisVoice } from "@/components/jarvis/useJarvisVoice";
 import { getSavedVoiceLanguage } from "@/components/agent-chat/chat-input/VoiceInput";
-import { geminiKey, jarvisEnabled, type Intent } from "@/components/jarvis/jarvisBrain";
+import { geminiKey, jarvisEnabled, jarvisLiveMode, type Intent } from "@/components/jarvis/jarvisBrain";
+import { startJarvisLive, LIVE_SYSTEM, type JarvisLiveHandle } from "@/components/jarvis/jarvisLive";
 
 type Phase = "idle" | "recording" | "thinking" | "confirm" | "speaking" | "resuming";
 
@@ -92,6 +93,7 @@ export function Jarvis({ brain }: JarvisProps) {
   // Production behaviour: no "tap to send" — a VAD watches the live mic level and auto-sends once
   // the user goes quiet after speaking (just like a person noticing you've finished your sentence).
   const startRecording = useCallback(() => {
+    if (jarvisLiveMode.get()) return; // Live mode owns the mic via the WebSocket session
     const ctx = ctxRef.current, source = sourceRef.current, analyser = analyserRef.current;
     if (!ctx || !source || !analyser) return;
     samplesRef.current = [];
@@ -238,6 +240,29 @@ export function Jarvis({ brain }: JarvisProps) {
     else setPhase("idle");
     toast.success("စကားပြောဆက်ဆံမှု ရှင်းလင်းပြီး · Conversation cleared");
   }, [brain, hasKey, startRecording]);
+
+  // ── Live (realtime duplex) mode ── one WebSocket does STT+LLM+TTS with server-side VAD and
+  // native barge-in; runs the whole time the orb is open. The walkie-talkie path is neutered
+  // (startRecording early-returns) so only ONE engine drives the mic. Default off; opt-in in Settings.
+  const liveRef = useRef<JarvisLiveHandle | null>(null);
+  useEffect(() => {
+    if (!open || !hasKey || !jarvisLiveMode.get()) return;
+    const handle = startJarvisLive({
+      systemPrompt: LIVE_SYSTEM,
+      onState: (s) => {
+        if (s === "listening") setPhase("recording");
+        else if (s === "speaking") setPhase("speaking");
+        else if (s === "connecting") setPhase("thinking");
+        else if (s === "error" || s === "closed") setPhase("idle");
+      },
+      onUserText: (t) => setHeard(t),
+      onModelText: (t) => setReply(t),
+      onAction: (action, title) => brain.execAction(action, title),
+      onError: (m) => { if (m !== "no key") toast.error(`JARVIS: ${m}`); },
+    });
+    liveRef.current = handle;
+    return () => { handle.close(); liveRef.current = null; };
+  }, [open, hasKey, brain]);
 
   // Conversational loop: re-listen ONLY after JARVIS has actually spoken AND finished. The bug was
   // resuming in the gap BEFORE speechSynthesis fires `onstart` (isSpeaking still false) — that

@@ -142,7 +142,7 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { jarvisEnabled, jarvisModels, geminiKey } from "@/components/jarvis/jarvisBrain";
+import { jarvisEnabled, jarvisModels, jarvisLiveMode, geminiKey } from "@/components/jarvis/jarvisBrain";
 import { cn } from "@/lib/utils";
 import { platformFileManager } from "@/lib/desktopChrome";
 import { applyAccent } from "@/lib/accentColor";
@@ -584,6 +584,8 @@ export default function KnowledgeWorkspacePage() {
   const [jarvisOn, setJarvisOn] = useState(() => jarvisEnabled.get());
   const [jarvisBrainModel, setJarvisBrainModel] = useState(() => jarvisModels.brain());
   const [jarvisTtsModel, setJarvisTtsModel] = useState(() => jarvisModels.tts());
+  const [jarvisLive, setJarvisLive] = useState(() => jarvisLiveMode.get());
+  const [jarvisLiveModel, setJarvisLiveModel] = useState(() => jarvisModels.live());
   // JARVIS Gemini API key management — view (masked), edit, save, clear. Never expose the raw key
   // in plaintext by default; toggle reveals it only on explicit user action.
   const [jarvisKeyEditing, setJarvisKeyEditing] = useState(false);
@@ -2677,8 +2679,30 @@ export default function KnowledgeWorkspacePage() {
                           <div className="flex flex-col gap-3 rounded-2xl border border-[var(--bb-border)] bg-[var(--bb-bg-2)] p-4">
                             <div className="flex items-center justify-between gap-4">
                               <div>
+                                <div className="text-sm font-medium text-[var(--bb-text-1)]">Live mode <span className="ml-1 rounded bg-[var(--bb-bg-4)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--bb-text-3)]">Realtime</span></div>
+                                <div className="text-xs text-[var(--bb-text-3)]">Phone-call mode — one duplex WebSocket (server VAD, barge-in, sub-second). Reopen the orb after toggling.</div>
+                              </div>
+                              <Switch checked={jarvisLive} onCheckedChange={(checked) => { jarvisLiveMode.set(checked); setJarvisLive(checked); }} />
+                            </div>
+                            {jarvisLive && (
+                              <div className="flex items-center justify-between gap-4 border-t border-[var(--bb-bg-3)] pt-3">
+                                <div>
+                                  <div className="text-sm font-medium text-[var(--bb-text-1)]">Live model</div>
+                                  <div className="text-xs text-[var(--bb-text-3)]">One model does STT + reasoning + speech over the socket.</div>
+                                </div>
+                                <select
+                                  value={jarvisLiveModel}
+                                  onChange={(e) => { jarvisModels.setLive(e.target.value); setJarvisLiveModel(e.target.value); }}
+                                  className="rounded-lg border border-[var(--bb-border)] bg-[var(--bb-bg-4)] px-3 py-1.5 text-sm text-[var(--bb-text-1)] outline-none"
+                                >
+                                  {jarvisModels.liveOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                                </select>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between gap-4 border-t border-[var(--bb-bg-3)] pt-3">
+                              <div>
                                 <div className="text-sm font-medium text-[var(--bb-text-1)]">Brain model <span className="text-[var(--bb-text-3)]">(voice → understanding)</span></div>
-                                <div className="text-xs text-[var(--bb-text-3)]">Transcribes + understands your speech. Must accept audio input.</div>
+                                <div className="text-xs text-[var(--bb-text-3)]">Turn-based path only (Live mode off). Transcribes + understands your speech.</div>
                               </div>
                               <select
                                 value={jarvisBrainModel}

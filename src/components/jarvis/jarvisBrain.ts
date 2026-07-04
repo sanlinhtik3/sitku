@@ -13,6 +13,7 @@ const TTS_VOICE = "Kore"; // voice is language-agnostic — Burmese text → Bur
 // are offered in the dropdowns. brain = audio→intent (must accept audio input); tts = voice out.
 const BRAIN_STORE = "beebot-jarvis-brain-model";
 const TTS_STORE = "beebot-jarvis-tts-model";
+const LIVE_STORE = "beebot-jarvis-live-model";
 export const jarvisModels = {
   brainOptions: [
     { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
@@ -23,15 +24,31 @@ export const jarvisModels = {
     { id: "gemini-2.5-flash-preview-tts", label: "Gemini 2.5 Flash TTS" },
     { id: "gemini-3.1-flash-tts-preview", label: "Gemini 3.1 Flash TTS ⭐" },
   ],
+  // Live (duplex realtime audio) models — one model does STT+LLM+TTS over a WebSocket.
+  liveOptions: [
+    { id: "gemini-2.0-flash-live-001", label: "Gemini 2.0 Flash Live" },
+    { id: "gemini-live-2.5-flash-preview", label: "Gemini 2.5 Flash Live ⭐" },
+  ],
   brain: () => localStorage.getItem(BRAIN_STORE) || "gemini-2.5-flash",
   tts: () => localStorage.getItem(TTS_STORE) || "gemini-2.5-flash-preview-tts",
+  live: () => localStorage.getItem(LIVE_STORE) || "gemini-2.0-flash-live-001",
   setBrain: (id: string) => localStorage.setItem(BRAIN_STORE, id),
   setTts: (id: string) => localStorage.setItem(TTS_STORE, id),
+  setLive: (id: string) => localStorage.setItem(LIVE_STORE, id),
 };
 
 export const geminiKey = {
   get: () => localStorage.getItem(KEY_STORE) || (import.meta as any).env.VITE_GEMINI_API_KEY || "",
   set: (k: string) => localStorage.setItem(KEY_STORE, k.trim()),
+};
+
+// Live (realtime duplex) mode — opt-in. When on, the orb runs a Gemini Live WebSocket
+// session (jarvisLive.ts) instead of the record→understand→speak turn loop. Default OFF
+// so the proven walkie-talkie path stays the shipping default until Live is device-verified.
+const LIVE_MODE_STORE = "beebot-jarvis-live-mode";
+export const jarvisLiveMode = {
+  get: () => localStorage.getItem(LIVE_MODE_STORE) === "1",
+  set: (on: boolean) => localStorage.setItem(LIVE_MODE_STORE, on ? "1" : "0"),
 };
 
 // JARVIS is OFF by default (under dev — must not ship enabled). Opt-in via Settings.
