@@ -87,8 +87,6 @@ import { AgentMarkdownContent } from "@/components/agent-chat/AgentMarkdownConte
 import type { LiveEditorHandle } from "@/components/editor/LiveMarkdownEditor";
 // Split CodeMirror (~300KB) into its own chunk so the workspace shell loads first.
 const LiveMarkdownEditor = lazy(() => import("@/components/editor/LiveMarkdownEditor").then((m) => ({ default: m.LiveMarkdownEditor })));
-// Codex-grade Read Mode — remark/rehype + custom React renderers per node type.
-// Lazy so users who never toggle to "Reading view" don't pay for react-markdown deps.
 const NoteReader = lazy(() => import("@/components/editor/NoteReader").then((m) => ({ default: m.NoteReader })));
 // Force-directed graph view — only loaded when the user opens #graph.
 const GraphView = lazy(() => import("@/components/editor/GraphView").then((m) => ({ default: m.GraphView })));
@@ -871,8 +869,8 @@ export default function KnowledgeWorkspacePage() {
   //   refreshNotes(undefined) → keep current selection
   //   refreshNotes(null)      → jump to first note (e.g. after deleting active)
   //   refreshNotes(path)      → select `path` if it still exists
-  const refreshNotes = useCallback(async (preferredPath?: string | null) => {
-    setIsLoading(true);
+  const refreshNotes = useCallback(async (preferredPath?: string | null, showLoading = false) => {
+    if (showLoading) setIsLoading(true);
     try {
       const [list, entries] = await Promise.all([
         notes.listNotes({ limit: 500 }),
@@ -886,7 +884,7 @@ export default function KnowledgeWorkspacePage() {
         ? list[0]?.path || null
         : (stillExists(preferredPath ?? null) ? preferredPath
           : stillExists(current) ? current
-            : list[0]?.path || null); // preferred + current both gone → first note (never a dead path)
+          : list[0]?.path || null); // preferred + current both gone → first note (never a dead path)
       // Keep the ref in lockstep so a racing background refresh sees the new
       // selection immediately (the ref otherwise only updates on re-render).
       activePathRef.current = nextPath ?? null;
@@ -895,7 +893,7 @@ export default function KnowledgeWorkspacePage() {
       console.error("[Workspace] Failed to load notes", error);
       toast.error("Failed to load local notes");
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   }, [notes]);
 
@@ -1035,7 +1033,7 @@ export default function KnowledgeWorkspacePage() {
     setNeedsReopenFolder(false);
     clearWorkspaceSession();
     await refreshVaults();
-    await refreshNotes(null);
+    await refreshNotes(null, true);
     toast.success("Vault folder reconnected");
   }, [clearWorkspaceSession, refreshNotes, refreshVaults]);
 
@@ -1049,7 +1047,7 @@ export default function KnowledgeWorkspacePage() {
         if (cancelled) return;
         if (state.active) {
           await refreshVaults();
-          await refreshNotes(null);
+          await refreshNotes(null, true);
         } else if (state.needsPermission) {
           setNeedsReopenFolder(true);
         }
@@ -1099,7 +1097,7 @@ export default function KnowledgeWorkspacePage() {
   useEffect(() => {
     refreshVaults();
     refreshSkills();
-    refreshNotes(localStorage.getItem(LAST_NOTE_KEY) || undefined); // restore last-open file (if it still exists)
+    refreshNotes(localStorage.getItem(LAST_NOTE_KEY) || undefined, true); // restore last-open file (if it still exists)
     const subscription = notes.watchNotes(() => {
       // Background/external change: refresh ONLY the tree/list — never the active
       // selection. (Touching activePath here raced with explicit create/open and
@@ -1460,13 +1458,15 @@ export default function KnowledgeWorkspacePage() {
         setSplitNote(null);
       }
       setNoteList(remaining);
+      setEntryList((cur) => cur.filter((e) => e.path !== activeNote.path));
       setActivePath(remaining[0]?.path || null);
+      void refreshNotesList();
       toast.success("Note deleted");
     } catch (error) {
       console.error("[Workspace] Delete note failed", error);
       toast.error("Failed to delete note");
     }
-  }, [activeNote, askConfirm, noteList, notes, splitPath]);
+  }, [activeNote, askConfirm, noteList, notes, refreshNotesList, splitPath]);
 
   const handleDeleteEntry = useCallback(async (entry: VaultEntry) => {
     const confirmed = await askConfirm({
@@ -1479,6 +1479,8 @@ export default function KnowledgeWorkspacePage() {
     try {
       if (entry.kind === "folder") {
         await notes.deleteFolder(entry.path);
+        setNoteList((cur) => cur.filter((n) => !n.path.startsWith(`${entry.path}/`)));
+        setEntryList((cur) => cur.filter((e) => e.path !== entry.path && !e.path.startsWith(`${entry.path}/`)));
         setOpenTabs((current) => current.filter((path) => !path.startsWith(`${entry.path}/`)));
         if (activePath?.startsWith(`${entry.path}/`)) setActivePath(null);
         if (splitPath?.startsWith(`${entry.path}/`)) {
@@ -1488,6 +1490,8 @@ export default function KnowledgeWorkspacePage() {
         }
       } else {
         await notes.deleteNote(entry.path);
+        setNoteList((cur) => cur.filter((n) => n.path !== entry.path));
+        setEntryList((cur) => cur.filter((e) => e.path !== entry.path));
         setOpenTabs((current) => current.filter((path) => path !== entry.path));
         if (splitPath === entry.path) {
           setSplitLayout(null);
@@ -1496,7 +1500,7 @@ export default function KnowledgeWorkspacePage() {
         }
         if (activePath === entry.path) setActivePath(null);
       }
-      await refreshNotes(activePath === entry.path || activePath?.startsWith(`${entry.path}/`) ? null : activePath);
+      await refreshNotes(activePath === entry.path || activePath?.startsWith(`${entry.path}/`) ? null : activePath, false);
       toast.success(entry.kind === "folder" ? "Folder deleted" : "Note deleted");
     } catch (error) {
       console.error("[Workspace] Delete entry failed", error);
@@ -1671,7 +1675,7 @@ export default function KnowledgeWorkspacePage() {
       clearWorkspaceSession();
       await refreshVaults();
       await refreshSkills();
-      await refreshNotes(null);
+      await refreshNotes(null, true);
       toast.success(`Opened ${opened.name}`);
     } catch (error) {
       console.error("[Workspace] Open vault failed", error);
@@ -1690,7 +1694,7 @@ export default function KnowledgeWorkspacePage() {
       clearWorkspaceSession();
       await refreshVaults();
       await refreshSkills();
-      await refreshNotes(null);
+      await refreshNotes(null, true);
       toast.success(`Created ${created.name}`);
     } catch (error) {
       console.error("[Workspace] Create vault failed", error);
@@ -1852,6 +1856,16 @@ export default function KnowledgeWorkspacePage() {
   );
 
   const wikiNotes = useMemo(() => liveNotes.map((note) => ({ path: note.path, title: note.title || titleFromPath(note.path) })), [liveNotes]);
+
+  const dataviewNotes = useMemo(
+    () =>
+      liveNotes.map((note) => ({
+        path: note.path,
+        title: note.title || titleFromPath(note.path),
+        content: note.path === activeNote?.path ? draft : note.content,
+      })),
+    [liveNotes, activeNote?.path, draft]
+  );
 
   const isResolvedWikilink = useCallback((target: string) => !!resolveWikilinkTarget(target, liveNotes), [liveNotes]);
 
@@ -2203,18 +2217,18 @@ export default function KnowledgeWorkspacePage() {
             {/* Editor Section */}
             {(!isMobile || mobileView === "editor") && (
               <section className="flex-1 min-h-0 min-w-0 flex flex-col rounded-[16px_0_0_0]">
-                  {editorMode === "edit" && (
-                    <div className="min-h-0 w-full flex-1 flex flex-col">
-                      <ContextMenu>
-                        <ContextMenuTrigger asChild>
-                          <div
-                            className="h-full min-h-0 overflow-y-auto bg-[var(--bb-bg-0)] flex-1"
-                            style={{ viewTransitionName: "bb-note" } as CSSProperties}
-                            onKeyDown={handleEditorKeyDown}
-                          >
-                            <div className={cn("mx-auto p-[30px_32px_96px]", appearanceSettings.readableLineLength ? "max-w-[740px]" : "max-w-none")}>
-                              {renderNoteHeader()}
-                              <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-[var(--bb-bg-2)]" aria-label="Loading editor" />}>
+                  <div className="min-h-0 w-full flex-1 flex flex-col">
+                    <ContextMenu>
+                      <ContextMenuTrigger asChild>
+                        <div
+                          className="h-full min-h-0 overflow-y-auto bg-[var(--bb-bg-0)] flex-1"
+                          style={{ viewTransitionName: "bb-note" } as CSSProperties}
+                          onKeyDown={handleEditorKeyDown}
+                        >
+                          <div className={cn("mx-auto p-[30px_32px_96px]", appearanceSettings.readableLineLength ? "max-w-[740px]" : "max-w-none")}>
+                            {renderNoteHeader()}
+                            <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-[var(--bb-bg-2)]" aria-label="Loading workspace" />}>
+                              {editorMode === "edit" ? (
                                 <LiveMarkdownEditor
                                   value={draft}
                                   onChange={onEditorType}
@@ -2229,87 +2243,91 @@ export default function KnowledgeWorkspacePage() {
                                   onWikilinkActivate={handleWikilinkActivate}
                                   isResolvedTarget={isResolvedWikilink}
                                 />
-                              </Suspense>
-                            </div>
+                              ) : (
+                                <div style={{ fontFamily: textFontStack }}>
+                                  <NoteReader
+                                    content={draft}
+                                    onWikilinkActivate={handleWikilinkActivate}
+                                    isResolvedTarget={isResolvedWikilink}
+                                    getNoteContent={getEmbedContent}
+                                    notes={dataviewNotes}
+                                    className="max-w-none"
+                                  />
+                                </div>
+                              )}
+                            </Suspense>
                           </div>
-                        </ContextMenuTrigger>
-                        <ContextMenuContent className="w-64">
-                          <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("link")}>
-                            Add link
-                          </ContextMenuItem>
-                          <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("link")}>
-                            Add external link
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuSub>
-                            <ContextMenuSubTrigger>Format</ContextMenuSubTrigger>
-                            <ContextMenuSubContent className="w-48">
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("bold")}>Bold</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("italic")}>Italic</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("strikethrough")}>Strikethrough</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("highlight")}>Highlight</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("inline-code")}>Code</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("math")}>Math</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("comment")}>Comment</ContextMenuItem>
-                              <ContextMenuSeparator />
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("clear")}>Clear formatting</ContextMenuItem>
-                            </ContextMenuSubContent>
-                          </ContextMenuSub>
-                          <ContextMenuSub>
-                            <ContextMenuSubTrigger>Paragraph</ContextMenuSubTrigger>
-                            <ContextMenuSubContent className="w-48">
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("bullet-list")}>Bullet list</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("numbered-list")}>Numbered list</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("task-list")}>Task list</ContextMenuItem>
-                              <ContextMenuSeparator />
-                              {[1, 2, 3, 4, 5, 6].map((level) => (
-                                <ContextMenuItem disabled={!activeNote} key={level} onClick={() => applyMarkdownCommand(`heading-${level}` as MarkdownCommand)}>
-                                  Heading {level}
-                                </ContextMenuItem>
-                              ))}
-                              <ContextMenuSeparator />
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("body")}>Body</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("quote")}>Quote</ContextMenuItem>
-                            </ContextMenuSubContent>
-                          </ContextMenuSub>
-                          <ContextMenuSub>
-                            <ContextMenuSubTrigger>Insert</ContextMenuSubTrigger>
-                            <ContextMenuSubContent className="w-48">
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("footnote")}>Footnote</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("table")}>Table</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("callout")}>Callout</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("horizontal-rule")}>Horizontal rule</ContextMenuItem>
-                              <ContextMenuSeparator />
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("code-block")}>Code block</ContextMenuItem>
-                              <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("math-block")}>Math block</ContextMenuItem>
-                            </ContextMenuSubContent>
-                          </ContextMenuSub>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem onClick={() => document.execCommand('cut')}>Cut</ContextMenuItem>
-                          <ContextMenuItem onClick={() => document.execCommand('copy')}>Copy</ContextMenuItem>
-                          <ContextMenuItem onClick={() => document.execCommand('paste')}>Paste</ContextMenuItem>
-                          <ContextMenuItem onClick={() => document.execCommand('insertText')}>Paste as plain text</ContextMenuItem>
-                          <ContextMenuItem onClick={() => document.execCommand('selectAll')}>Select all</ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    </div>
-                  )}
-                  {editorMode === "preview" && (
-                    <div className="h-full min-h-0 overflow-y-auto bg-[var(--bb-bg-0)] w-full flex-1">
-                      <div className={cn("mx-auto p-[30px_32px_96px]", appearanceSettings.readableLineLength ? "max-w-[740px]" : "max-w-none")} style={{ fontFamily: textFontStack }}>
-                        {renderNoteHeader()}
-                        <Suspense fallback={<div className="px-6 py-8 text-sm text-[var(--bb-text-4)]">Loading reader…</div>}>
-                          <NoteReader
-                            content={draft}
-                            onWikilinkActivate={handleWikilinkActivate}
-                            isResolvedTarget={isResolvedWikilink}
-                            getNoteContent={getEmbedContent}
-                            className="max-w-none"
-                          />
-                        </Suspense>
-                      </div>
-                    </div>
-                  )}
+                        </div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-64">
+                        {editorMode === "edit" ? (
+                          <>
+                            <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("link")}>
+                              Add link
+                            </ContextMenuItem>
+                            <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("link")}>
+                              Add external link
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuSub>
+                              <ContextMenuSubTrigger>Format</ContextMenuSubTrigger>
+                              <ContextMenuSubContent className="w-48">
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("bold")}>Bold</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("italic")}>Italic</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("strikethrough")}>Strikethrough</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("highlight")}>Highlight</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("inline-code")}>Code</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("math")}>Math</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("comment")}>Comment</ContextMenuItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("clear")}>Clear formatting</ContextMenuItem>
+                              </ContextMenuSubContent>
+                            </ContextMenuSub>
+                            <ContextMenuSub>
+                              <ContextMenuSubTrigger>Paragraph</ContextMenuSubTrigger>
+                              <ContextMenuSubContent className="w-48">
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("bullet-list")}>Bullet list</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("numbered-list")}>Numbered list</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("task-list")}>Task list</ContextMenuItem>
+                                <ContextMenuSeparator />
+                                {[1, 2, 3, 4, 5, 6].map((level) => (
+                                  <ContextMenuItem disabled={!activeNote} key={level} onClick={() => applyMarkdownCommand(`heading-${level}` as MarkdownCommand)}>
+                                    Heading {level}
+                                  </ContextMenuItem>
+                                ))}
+                                <ContextMenuSeparator />
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("body")}>Body</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("quote")}>Quote</ContextMenuItem>
+                              </ContextMenuSubContent>
+                            </ContextMenuSub>
+                            <ContextMenuSub>
+                              <ContextMenuSubTrigger>Insert</ContextMenuSubTrigger>
+                              <ContextMenuSubContent className="w-48">
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("footnote")}>Footnote</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("table")}>Table</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("callout")}>Callout</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("horizontal-rule")}>Horizontal rule</ContextMenuItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("code-block")}>Code block</ContextMenuItem>
+                                <ContextMenuItem disabled={!activeNote} onClick={() => applyMarkdownCommand("math-block")}>Math block</ContextMenuItem>
+                              </ContextMenuSubContent>
+                            </ContextMenuSub>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem onClick={() => document.execCommand('cut')}>Cut</ContextMenuItem>
+                            <ContextMenuItem onClick={() => document.execCommand('copy')}>Copy</ContextMenuItem>
+                            <ContextMenuItem onClick={() => document.execCommand('paste')}>Paste</ContextMenuItem>
+                            <ContextMenuItem onClick={() => document.execCommand('insertText')}>Paste as plain text</ContextMenuItem>
+                            <ContextMenuItem onClick={() => document.execCommand('selectAll')}>Select all</ContextMenuItem>
+                          </>
+                        ) : (
+                          <>
+                            <ContextMenuItem onClick={() => document.execCommand('copy')}>Copy</ContextMenuItem>
+                            <ContextMenuItem onClick={() => document.execCommand('selectAll')}>Select all</ContextMenuItem>
+                          </>
+                        )}
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  </div>
               </section>
             )}
           </main>

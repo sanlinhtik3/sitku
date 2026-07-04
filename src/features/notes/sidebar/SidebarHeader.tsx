@@ -155,29 +155,36 @@ export function SidebarHeader({
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>Recent</DropdownMenuLabel>
                 {recentVaults.map((recent) => (
-                  <DropdownMenuItem key={recent.path} onClick={() => onSwitchVault(recent.path)} disabled={isVaultBusy || recent.active} className="group/vault flex items-center">
-                    {recent.active ? (
-                      <CheckCircle className="mr-2 h-4 w-4 text-[var(--beebot-accent)]" />
-                    ) : (
-                      <Diskette className="mr-2 h-4 w-4" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{recent.name}</span>
-                      <span className="block truncate text-[11px] text-muted-foreground">{recent.noteCount || 0} notes</span>
-                    </span>
+                  // The remove ✕ is a SIBLING of the item, not a child — clicking it
+                  // physically can't trigger the item's select (which was switching vaults).
+                  <div key={recent.path} className="group/vault relative flex items-center">
+                    <DropdownMenuItem
+                      onClick={() => onSwitchVault(recent.path)}
+                      disabled={isVaultBusy || recent.active}
+                      className="flex-1 min-w-0 pr-8"
+                    >
+                      {recent.active ? (
+                        <CheckCircle className="mr-2 h-4 w-4 text-[var(--beebot-accent)]" />
+                      ) : (
+                        <Diskette className="mr-2 h-4 w-4" />
+                      )}
+                      <span className="min-w-0">
+                        <span className="block truncate">{recent.name}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">{recent.noteCount || 0} notes</span>
+                      </span>
+                    </DropdownMenuItem>
                     {!recent.active && (
                       <button
                         type="button"
                         title="Remove from Recent"
                         aria-label="Remove from Recent"
-                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => { e.stopPropagation(); e.preventDefault(); onForgetVault(recent.path); }}
-                        className="ml-2 shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-[rgba(255,255,255,0.08)] hover:text-[#ededed] group-hover/vault:opacity-100 focus:opacity-100"
+                        onClick={() => onForgetVault(recent.path)}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-[rgba(255,255,255,0.10)] hover:text-[#ededed] group-hover/vault:opacity-100"
                       >
                         <CloseCircle className="h-3.5 w-3.5" />
                       </button>
                     )}
-                  </DropdownMenuItem>
+                  </div>
                 ))}
               </>
             )}

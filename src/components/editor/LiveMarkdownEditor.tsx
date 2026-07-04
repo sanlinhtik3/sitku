@@ -9,6 +9,7 @@ import { openSearchPanel, searchKeymap, highlightSelectionMatches } from "@codem
 import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { tags as t } from "@lezer/highlight";
 import { cn } from "@/lib/utils";
+import { VisualTableEditor } from "@/components/editor/VisualTableEditor";
 
 // Note metadata used by the wikilink autocompletion + click resolver.
 export interface WikiNote {
@@ -455,6 +456,38 @@ function makeWikilinkCompletions(notesRef: { current: WikiNote[] }) {
   };
 }
 
+function makeSlashCompletions() {
+  return (context: CompletionContext): CompletionResult | null => {
+    const line = context.state.doc.lineAt(context.pos);
+    const before = line.text.slice(0, context.pos - line.from);
+    const slashIdx = before.lastIndexOf("/");
+    if (slashIdx < 0) return null;
+    if (slashIdx > 0 && !/\s$/.test(before.slice(0, slashIdx))) return null;
+    const after = before.slice(slashIdx + 1);
+    if (/\s/.test(after)) return null;
+    const from = line.from + slashIdx;
+
+    const options = [
+      { label: "/h1", detail: "Heading 1", type: "keyword", apply: "# " },
+      { label: "/h2", detail: "Heading 2", type: "keyword", apply: "## " },
+      { label: "/h3", detail: "Heading 3", type: "keyword", apply: "### " },
+      { label: "/table", detail: "Insert Markdown Table", type: "keyword", apply: "| Column 1 | Column 2 |\n| -------- | -------- |\n| Cell 1   | Cell 2   |\n" },
+      { label: "/callout", detail: "Note Callout Box", type: "keyword", apply: "> [!NOTE]\n> " },
+      { label: "/tip", detail: "Tip Callout Box", type: "keyword", apply: "> [!TIP]\n> " },
+      { label: "/warning", detail: "Warning Callout Box", type: "keyword", apply: "> [!WARNING]\n> " },
+      { label: "/code", detail: "Fenced Code Block", type: "keyword", apply: "```ts\n// Code here\n```\n" },
+      { label: "/mermaid", detail: "Mermaid Diagram Block", type: "keyword", apply: "```mermaid\ngraph TD\n  A[Start] --> B[Done]\n```\n" },
+      { label: "/math", detail: "LaTeX Math Block", type: "keyword", apply: "$$\nE = mc^2\n$$\n" },
+      { label: "/task", detail: "Task Checkbox Item", type: "keyword", apply: "- [ ] " },
+      { label: "/bullet", detail: "Bullet List Item", type: "keyword", apply: "- " },
+      { label: "/quote", detail: "Blockquote", type: "keyword", apply: "> " },
+      { label: "/hr", detail: "Horizontal Rule", type: "keyword", apply: "---\n" },
+    ].filter((o) => !after || o.label.slice(1).toLowerCase().startsWith(after.toLowerCase()));
+
+    return { from, options, validFor: /^\/[a-zA-Z0-9]*$/ };
+  };
+}
+
 const livePreview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
@@ -655,6 +688,33 @@ function runCommandOn(view: EditorView, command: MarkdownCommand, options?: RunC
   }
 }
 
+function getTableBoundsAtPos(state: EditorState, pos: number): { from: number; to: number; markdown: string } | null {
+  const line = state.doc.lineAt(pos);
+  if (!line.text.trim().startsWith("|")) return null;
+
+  let startNumber = line.number;
+  while (startNumber > 1) {
+    const prev = state.doc.line(startNumber - 1);
+    if (!prev.text.trim().startsWith("|")) break;
+    startNumber--;
+  }
+
+  let endNumber = line.number;
+  while (endNumber < state.doc.lines) {
+    const next = state.doc.line(endNumber + 1);
+    if (!next.text.trim().startsWith("|")) break;
+    endNumber++;
+  }
+
+  const startLine = state.doc.line(startNumber);
+  const endLine = state.doc.line(endNumber);
+  return {
+    from: startLine.from,
+    to: endLine.to,
+    markdown: state.doc.sliceString(startLine.from, endLine.to),
+  };
+}
+
 // ── React component ────────────────────────────────────────────────────────
 export function LiveMarkdownEditor({
   value,
@@ -673,6 +733,11 @@ export function LiveMarkdownEditor({
 }: LiveMarkdownEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const [bubbleMenu, setBubbleMenu] = useState<{ top: number; left: number } | null>(null);
+  const [activeTable, setActiveTable] = useState<{ top: number; left: number; from: number; to: number; markdown: string } | null>(null);
+  const [tableEditorOpen, setTableEditorOpen] = useState(false);
+  const [editingTableMarkdown, setEditingTableMarkdown] = useState("");
+  const tableReplaceRangeRef = useRef<{ from: number; to: number } | null>(null);
   const editableCompartment = useRef(new Compartment());
   const spellCompartment = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
@@ -732,7 +797,7 @@ export function LiveMarkdownEditor({
         livePreview,
         makeWikilinkPlugin(notesRef, isResolvedTargetRef, onWikilinkActivateRef),
         autocompletion({
-          override: [makeWikilinkCompletions(notesRef)],
+          override: [makeWikilinkCompletions(notesRef), makeSlashCompletions()],
           activateOnTyping: true,
           closeOnBlur: true,
           maxRenderedOptions: 12,
@@ -748,6 +813,39 @@ export function LiveMarkdownEditor({
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap, indentWithTab]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+          if (update.selectionSet || update.docChanged || update.focusChanged) {
+            const sel = update.state.selection.main;
+            if (!sel.empty && update.view.hasFocus && (sel.to - sel.from) > 1) {
+              const coords = update.view.coordsAtPos(sel.from);
+              const hostRect = hostRef.current?.getBoundingClientRect();
+              if (coords && hostRect) {
+                setBubbleMenu({
+                  top: Math.max(8, coords.top - hostRect.top - 44),
+                  left: Math.max(16, coords.left - hostRect.left - 20),
+                });
+                setActiveTable(null);
+                return;
+              }
+            }
+            setBubbleMenu(null);
+
+            if (update.view.hasFocus) {
+              const tableInfo = getTableBoundsAtPos(update.state, sel.head);
+              if (tableInfo) {
+                const coords = update.view.coordsAtPos(tableInfo.from);
+                const hostRect = hostRef.current?.getBoundingClientRect();
+                if (coords && hostRect) {
+                  setActiveTable({
+                    top: Math.max(8, coords.top - hostRect.top - 36),
+                    left: Math.max(16, coords.left - hostRect.left),
+                    ...tableInfo,
+                  });
+                  return;
+                }
+              }
+            }
+            setActiveTable(null);
+          }
         }),
         EditorView.domEventHandlers({
           blur: () => { onBlurRef.current?.(); return false; },
@@ -814,6 +912,99 @@ export function LiveMarkdownEditor({
 
   return (
     <div className={cn("beebot-live-editor-wrapper relative h-full w-full", className)}>
+      {bubbleMenu && editable && (
+        <div
+          className="absolute z-50 flex items-center gap-1 rounded-full border border-[var(--bb-border-strong)] bg-[var(--bb-bg-1)]/95 backdrop-blur-md px-2 py-1 shadow-xl transition-all duration-150 animate-in fade-in zoom-in-95"
+          style={{ top: `${bubbleMenu.top}px`, left: `${bubbleMenu.left}px` }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            onClick={() => { const v = viewRef.current; if (v) runCommandOn(v, "bold"); }}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-[var(--bb-text-1)] hover:bg-[var(--bb-bg-3)] transition-colors"
+            title="Bold (Cmd+B)"
+          >
+            B
+          </button>
+          <button
+            type="button"
+            onClick={() => { const v = viewRef.current; if (v) runCommandOn(v, "italic"); }}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-xs italic font-serif text-[var(--bb-text-1)] hover:bg-[var(--bb-bg-3)] transition-colors"
+            title="Italic (Cmd+I)"
+          >
+            I
+          </button>
+          <button
+            type="button"
+            onClick={() => { const v = viewRef.current; if (v) runCommandOn(v, "strikethrough"); }}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-xs line-through text-[var(--bb-text-2)] hover:bg-[var(--bb-bg-3)] transition-colors"
+            title="Strikethrough"
+          >
+            S
+          </button>
+          <button
+            type="button"
+            onClick={() => { const v = viewRef.current; if (v) runCommandOn(v, "highlight"); }}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-xs text-[var(--beebot-accent,#f4d35e)] bg-[var(--beebot-accent,#f4d35e)]/15 hover:bg-[var(--beebot-accent,#f4d35e)]/25 transition-colors font-semibold"
+            title="Highlight"
+          >
+            H
+          </button>
+          <div className="h-4 w-[1px] bg-[var(--bb-border)] mx-0.5" />
+          <button
+            type="button"
+            onClick={() => { const v = viewRef.current; if (v) runCommandOn(v, "inline-code"); }}
+            className="flex h-7 px-2 items-center justify-center rounded-full font-mono text-xs text-[var(--bb-text-1)] hover:bg-[var(--bb-bg-3)] transition-colors"
+            title="Inline Code"
+          >
+            `code`
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (onLinkShortcutRef.current) onLinkShortcutRef.current();
+              else { const v = viewRef.current; if (v) runCommandOn(v, "link"); }
+            }}
+            className="flex h-7 px-2.5 items-center justify-center rounded-full text-xs font-medium text-[var(--bb-text-1)] hover:bg-[var(--bb-bg-3)] transition-colors gap-1"
+            title="Add Link (Cmd+K)"
+          >
+            <span>🔗</span>
+            <span>Link</span>
+          </button>
+        </div>
+      )}
+      {activeTable && editable && !tableEditorOpen && (
+        <button
+          type="button"
+          onClick={() => {
+            tableReplaceRangeRef.current = { from: activeTable.from, to: activeTable.to };
+            setEditingTableMarkdown(activeTable.markdown);
+            setTableEditorOpen(true);
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+          className="absolute z-40 flex items-center gap-1.5 rounded-full border border-[var(--beebot-accent,#f4d35e)] bg-[var(--bb-bg-1)]/95 backdrop-blur-md px-3 py-1 shadow-lg text-xs font-semibold text-[var(--bb-text-1)] hover:bg-[var(--beebot-accent,#f4d35e)] hover:text-black transition-all duration-150 animate-in fade-in zoom-in-95"
+          style={{ top: `${activeTable.top}px`, left: `${activeTable.left}px` }}
+          title="Edit table in visual spreadsheet grid"
+        >
+          <span>📊</span>
+          <span>Edit Table Grid</span>
+        </button>
+      )}
+      <VisualTableEditor
+        open={tableEditorOpen}
+        onOpenChange={setTableEditorOpen}
+        initialMarkdown={editingTableMarkdown}
+        onApply={(formatted) => {
+          const v = viewRef.current;
+          const r = tableReplaceRangeRef.current;
+          if (v && r) {
+            v.dispatch({
+              changes: { from: r.from, to: r.to, insert: formatted.trim() + "\n" },
+              selection: { anchor: r.from + formatted.trim().length + 1 },
+            });
+          }
+        }}
+      />
       <div ref={hostRef} className="beebot-live-editor-host h-full w-full" style={style} />
     </div>
   );

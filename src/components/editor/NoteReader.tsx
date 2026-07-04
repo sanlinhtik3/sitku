@@ -9,6 +9,7 @@ import { Copy, CheckCircle as Check, Document as FileText, MagicStick3 as Sparkl
 import { Brain, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAttachment } from "@/repositories/local/attachmentStore";
+import { DataviewQueryCard, type NoteItem } from "@/components/editor/DataviewQueryCard";
 
 // Renders an `attachment:<id>` reference: image → <img>, PDF → native <iframe>
 // viewer, anything else → download link. Blob URL resolved async from IndexedDB.
@@ -411,6 +412,8 @@ export interface NoteReaderProps {
   isResolvedTarget?: (target: string) => boolean;
   /** Resolves an embed `![[Target]]` to that note's full markdown body. */
   getNoteContent?: (target: string) => string | null | undefined;
+  /** Notes array for live Dataview embedded queries. */
+  notes?: NoteItem[];
   /** Internal: tracks recursive embed depth to prevent infinite loops. */
   _depth?: number;
 }
@@ -550,23 +553,12 @@ function extractCalloutInfo(children: ReactNode): { type: string | null; cleaned
 }
 
 // ── Main reader ────────────────────────────────────────────────────────────
-export const NoteReader = memo(function NoteReader({ content, className, onWikilinkActivate, isResolvedTarget, getNoteContent, _depth = 0 }: NoteReaderProps) {
+export const NoteReader = memo(function NoteReader({ content, className, onWikilinkActivate, isResolvedTarget, getNoteContent, notes = [], _depth = 0 }: NoteReaderProps) {
   const { fm, body: rawBody } = useMemo(() => splitFrontmatter(content), [content]);
   // Preprocess standalone ![[…]] lines into :::embed[…]:::  directives so the
   // existing remark-directive pipeline picks them up.
   const body = useMemo(() => {
-    const text = preprocessEmbeds(rawBody);
-    const lines = text.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i].trim();
-      if (trimmed) {
-        if (!trimmed.startsWith("#") && !trimmed.startsWith(">") && !trimmed.startsWith("```") && !trimmed.startsWith("-") && !trimmed.match(/^\d+\./)) {
-          lines[i] = "# " + lines[i];
-        }
-        break;
-      }
-    }
-    return lines.join("\n");
+    return preprocessEmbeds(rawBody);
   }, [rawBody]);
   const metadata = useMemo(() => (fm ? parseFrontmatter(fm) : null), [fm]);
   // KaTeX CSS only matters if the body contains math — cheap substring check
@@ -577,37 +569,37 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
 
   const components: Components = useMemo(() => ({
     h1: ({ children, ...props }) => (
-      <h1 {...props} className="mt-2 mb-[14px] text-[33px] font-[720] leading-[1.12] tracking-[-0.028em] text-[#f4f4f4]">
+      <h1 {...props} className="mt-2 mb-[14px] text-[33px] font-[720] leading-[1.12] tracking-[-0.028em] text-[var(--bb-text-1)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </h1>
     ),
     h2: ({ children, ...props }) => (
-      <h2 {...props} className="mt-[1.6em] mb-[0.45em] text-[1.4em] font-[680] leading-[1.3] tracking-[-0.018em] text-[#f2f2f2]">
+      <h2 {...props} className="mt-[1.6em] mb-[0.45em] text-[1.4em] font-[680] leading-[1.3] tracking-[-0.018em] text-[var(--bb-text-1)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </h2>
     ),
     h3: ({ children, ...props }) => (
-      <h3 {...props} className="mt-[1.25em] mb-[0.4em] text-[1.14em] font-[680] leading-[1.3] tracking-[-0.012em] text-[#f2f2f2]">
+      <h3 {...props} className="mt-[1.25em] mb-[0.4em] text-[1.14em] font-[680] leading-[1.3] tracking-[-0.012em] text-[var(--bb-text-1)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </h3>
     ),
     h4: ({ children, ...props }) => (
-      <h4 {...props} className="mt-6 mb-2 text-[1.05em] font-[650] text-[#ededed]">
+      <h4 {...props} className="mt-6 mb-2 text-[1.05em] font-[650] text-[var(--bb-text-1)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </h4>
     ),
     h5: ({ children, ...props }) => (
-      <h5 {...props} className="mt-4 mb-1.5 text-[1em] font-[650] text-[#ededed]">
+      <h5 {...props} className="mt-4 mb-1.5 text-[1em] font-[650] text-[var(--bb-text-1)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </h5>
     ),
     h6: ({ children, ...props }) => (
-      <h6 {...props} className="mt-4 mb-1.5 text-[0.95em] font-[650] text-[#d4d4d4]">
+      <h6 {...props} className="mt-4 mb-1.5 text-[0.95em] font-[650] text-[var(--bb-text-2)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </h6>
     ),
     p: ({ children, ...props }) => (
-      <p {...props} className="my-[0.62em] text-[16px] leading-[1.68] tracking-[-0.003em] text-[#d4d4d4]">
+      <p {...props} className="my-[0.62em] text-[16px] leading-[1.68] tracking-[-0.003em] text-[var(--bb-text-1)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </p>
     ),
@@ -617,29 +609,29 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
       </a>
     ),
     strong: ({ children, ...props }) => (
-      <strong {...props} className="font-[650] text-[#f2f2f2]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</strong>
+      <strong {...props} className="font-[650] text-[var(--bb-text-1)]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</strong>
     ),
     em: ({ children, ...props }) => (
-      <em {...props} className="italic text-[#ededed]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</em>
+      <em {...props} className="italic text-[var(--bb-text-1)]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</em>
     ),
     del: ({ children, ...props }) => (
-      <del {...props} className="line-through text-[#6a6a6c]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</del>
+      <del {...props} className="line-through text-[var(--bb-text-3)]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</del>
     ),
     mark: ({ children, ...props }) => (
       <mark {...props} className="bg-[rgba(255,225,120,0.26)] rounded-[4px] px-[0.16em] py-0 text-inherit">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</mark>
     ),
     ul: ({ children, className: ulClass, ...props }) => (
-      <ul {...props} className={cn("my-[0.55em] text-[#d4d4d4] text-[16px] leading-[1.68] tracking-[-0.003em] space-y-[0.3em] [&_ul]:my-[0.3em] [&_ul]:pl-[1.2em] marker:text-[var(--beebot-accent,#f4d35e)]", ulClass?.includes("contains-task-list") ? "list-none pl-[0.2em]" : "list-disc pl-[1.4em]")}>
+      <ul {...props} className={cn("my-[0.55em] text-[var(--bb-text-1)] text-[16px] leading-[1.68] tracking-[-0.003em] space-y-[0.3em] [&_ul]:my-[0.3em] [&_ul]:pl-[1.2em] marker:text-[var(--beebot-accent,#f4d35e)]", ulClass?.includes("contains-task-list") ? "list-none pl-[0.2em]" : "list-disc pl-[1.4em]")}>
         {children}
       </ul>
     ),
     ol: ({ children, ...props }) => (
-      <ol {...props} className="my-[0.55em] pl-[1.4em] list-decimal text-[#d4d4d4] text-[16px] leading-[1.68] tracking-[-0.003em] space-y-[0.3em] [&_ol]:my-[0.3em] [&_ol]:pl-[1.2em] marker:text-[#7a7a7c] marker:font-[600]">
+      <ol {...props} className="my-[0.55em] pl-[1.4em] list-decimal text-[var(--bb-text-1)] text-[16px] leading-[1.68] tracking-[-0.003em] space-y-[0.3em] [&_ol]:my-[0.3em] [&_ol]:pl-[1.2em] marker:text-[var(--bb-text-2)] marker:font-[600]">
         {children}
       </ol>
     ),
     li: ({ children, className: liClass, ...props }) => (
-      <li {...props} className={cn("my-[0.3em] text-[16px] leading-[1.68] text-[#d4d4d4]", liClass?.includes("task-list-item") ? "flex items-center list-none" : "")}>
+      <li {...props} className={cn("my-[0.3em] text-[16px] leading-[1.68] text-[var(--bb-text-1)]", liClass?.includes("task-list-item") ? "flex items-center list-none" : "")}>
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </li>
     ),
@@ -686,6 +678,7 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
       const text = String(children).replace(/\n$/, "");
       // Fenced ```mermaid blocks render as live SVG diagrams instead of code.
       if (language === "mermaid") return <MermaidBlock code={text} />;
+      if (language === "query" || language === "dataview") return <DataviewQueryCard code={text} notes={notes} onOpenNote={onWikilinkActivate} />;
       return <CodeBlock language={language}>{text}</CodeBlock>;
     },
     pre: ({ children }) => <>{children}</>, // CodeBlock already provides <pre>
@@ -736,12 +729,15 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
           />
         );
       }
+      if (directive === "query" || directive === "dataview") {
+        return <DataviewQueryCard spec={rest["data-directive-title"]} code={typeof children === "string" ? children : ""} notes={notes} onOpenNote={onWikilinkActivate} />;
+      }
       if (directive) {
         return <DirectiveCard name={directive} title={rest["data-directive-title"]}>{children}</DirectiveCard>;
       }
       return <div {...rest}>{children}</div>;
     },
-  }), [onWikilinkActivate, isResolvedTarget, getNoteContent, _depth]);
+  }), [onWikilinkActivate, isResolvedTarget, getNoteContent, notes, _depth]);
 
   return (
     <article className={cn("mx-auto max-w-3xl px-2 py-6 text-[var(--bb-text-1)]", className)}>
