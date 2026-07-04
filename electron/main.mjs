@@ -51,6 +51,7 @@ if (process.platform === "darwin") {
 app.commandLine.appendSwitch("password-store", "basic");
 
 let mainWindow = null;
+let isQuitting = false;
 let runtime = null;
 const activeStreams = new Map();
 let cachedSystemFonts = null;
@@ -243,6 +244,13 @@ function createWindow() {
     },
   });
 
+  mainWindow.on("close", (e) => {
+    if (process.platform === "darwin" && !isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   // Live theme follow: when macOS toggles dark/light, swap the chrome
   // background so the area outside the React shell (during reload / transitions)
   // never mismatches the in-app theme.
@@ -410,7 +418,11 @@ app.whenReady().then(() => {
   initAutoUpdater();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    } else if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
   });
 });
 
@@ -448,19 +460,36 @@ function buildAppMenu() {
     {
       label: "Edit",
       submenu: [
-        { role: "undo" }, { role: "redo" }, { type: "separator" },
-        { role: "cut" }, { role: "copy" }, { role: "paste" },
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
         ...(isMac
-          ? [{ role: "pasteAndMatchStyle" }, { role: "delete" }, { role: "selectAll" }]
+          ? [
+              { role: "pasteAndMatchStyle" },
+              { role: "delete" },
+              { role: "selectAll" },
+              { type: "separator" },
+              {
+                label: "Speech",
+                submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }],
+              },
+            ]
           : [{ role: "delete" }, { type: "separator" }, { role: "selectAll" }]),
       ],
     },
     {
       label: "View",
       submenu: [
-        { role: "reload" }, { role: "forceReload" }, { role: "toggleDevTools" },
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
         { type: "separator" },
-        { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
         { type: "separator" },
         { role: "togglefullscreen" },
       ],
@@ -468,12 +497,17 @@ function buildAppMenu() {
     {
       label: "Window",
       submenu: [
-        { role: "minimize" }, { role: "zoom" },
-        ...(isMac ? [{ type: "separator" }, { role: "front" }] : [{ role: "close" }]),
+        { role: "minimize" },
+        { role: "zoom" },
+        ...(isMac
+          ? [{ type: "separator" }, { role: "front" }, { type: "separator" }, { role: "window" }]
+          : [{ role: "close" }]),
       ],
     },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
 // Auto-update via the GitHub Releases feed (see package.json "build.publish").
@@ -507,5 +541,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
   runtime?.close?.();
 });

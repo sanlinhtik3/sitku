@@ -1,6 +1,6 @@
 # Sitku (စိတ်ကူး)
 
-[![Version](https://img.shields.io/badge/version-2026.7.3-blue.svg)](https://sitku.space)
+[![Version](https://img.shields.io/badge/version-2026.7.4-blue.svg)](https://sitku.space)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Web-purple.svg)](https://sitku.space)
 [![Architecture](https://img.shields.io/badge/architecture-Local--First%20%7C%20Offline--Ready-green.svg)](https://sitku.space)
 
@@ -67,6 +67,6 @@ npm run desktop:dev
 
 ## 📄 License & Versioning
 
-- **Version:** Calendar Versioning (`YYYY.M.D` e.g., `2026.7.3`)
+- **Version:** Calendar Versioning (`YYYY.M.D` e.g., `2026.7.4`)
 - **Official Portal:** [sitku.space](https://sitku.space)
 - **Author:** ZOE & Sitku Contributors
