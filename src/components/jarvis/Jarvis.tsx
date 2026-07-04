@@ -332,6 +332,7 @@ export function Jarvis({ brain }: JarvisProps) {
   // ── Tap the orb: start/stop a turn (audio if keyed, else Web Speech) ──
   // A manual tap ALWAYS cancels the post-TTS cooldown — if the user wants to speak, we listen now.
   const onOrbTap = useCallback(() => {
+    if (jarvisLiveMode.get()) return; // Live mode: the session is always-on; barge-in is voice, not tap
     cooldownRef.current = false;
     if (phase === "idle" || phase === "resuming") {
       // Both "fresh start" and "cooldown about to auto-resume" → tapping listens NOW.

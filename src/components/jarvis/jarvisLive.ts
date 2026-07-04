@@ -90,11 +90,17 @@ export function startJarvisLive(opts: JarvisLiveOptions): JarvisLiveHandle {
   const key = geminiKey.get();
   if (!key) { opts.onError?.("no key"); opts.onState("error"); return { close() {} }; }
 
-  opts.onState("connecting");
+  // Fire state changes only on transition — the model streams many audio chunks per reply,
+  // and calling onState("speaking") on each would thrash the orb's re-render.
+  let lastState: LiveState | null = null;
+  const setState = (s: LiveState) => { if (s !== lastState) { lastState = s; opts.onState(s); } };
+
+  setState("connecting");
   let ws: WebSocket | null = new WebSocket(`${LIVE_URL}?key=${encodeURIComponent(key)}`);
   let closed = false;
-  let micCtx: AudioContext | null = null;
-  let playCtx: AudioContext | null = null;
+  // ONE AudioContext for both mic capture and playback: getUserMedia unlocks it, so playback
+  // can't get stuck suspended by the autoplay policy (that = a silent JARVIS).
+  let audioCtx: AudioContext | null = null;
   let stream: MediaStream | null = null;
   let proc: ScriptProcessorNode | null = null;
   let playHead = 0; // gapless scheduling clock
@@ -118,8 +124,8 @@ export function startJarvisLive(opts: JarvisLiveOptions): JarvisLiveHandle {
     });
   };
 
-  ws.onerror = () => { if (!closed) { opts.onError?.("connection error"); opts.onState("error"); } };
-  ws.onclose = () => { if (!closed) opts.onState("closed"); };
+  ws.onerror = () => { if (!closed) { opts.onError?.("connection error"); setState("error"); } };
+  ws.onclose = () => { if (!closed) setState("closed"); };
 
   ws.onmessage = async (ev: MessageEvent) => {
     if (closed) return;
@@ -127,21 +133,21 @@ export function startJarvisLive(opts: JarvisLiveOptions): JarvisLiveHandle {
     try { msg = JSON.parse(typeof ev.data === "string" ? ev.data : await (ev.data as Blob).text()); }
     catch { return; }
 
-    if (msg.setupComplete) { void startMic(); opts.onState("listening"); return; }
+    if (msg.setupComplete) { void startMic(); setState("listening"); return; }
 
     const sc = msg.serverContent;
     if (sc) {
-      if (sc.interrupted) stopPlayback();                       // barge-in
+      if (sc.interrupted) { stopPlayback(); setState("listening"); } // barge-in: cut audio, back to listening
       if (sc.inputTranscription?.text) opts.onUserText?.(sc.inputTranscription.text);
       if (sc.outputTranscription?.text) opts.onModelText?.(sc.outputTranscription.text);
       for (const p of sc.modelTurn?.parts || []) {
         const inline = p.inlineData;
         if (inline?.data && String(inline.mimeType || "").includes("audio")) {
-          opts.onState("speaking");
+          setState("speaking");
           playPcm(base64ToInt16(inline.data), rateOf(inline.mimeType));
         }
       }
-      if (sc.turnComplete) opts.onState("listening");
+      if (sc.turnComplete) setState("listening");
     }
 
     if (msg.toolCall?.functionCalls?.length) {
@@ -164,31 +170,32 @@ export function startJarvisLive(opts: JarvisLiveOptions): JarvisLiveHandle {
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
     } catch {
-      opts.onError?.("mic denied"); opts.onState("error"); return;
+      opts.onError?.("mic denied"); setState("error"); return;
     }
-    micCtx = new AudioContext();
-    const src = micCtx.createMediaStreamSource(stream);
+    audioCtx = new AudioContext();
+    const src = audioCtx.createMediaStreamSource(stream);
     // ponytail: ScriptProcessor is deprecated but universal; AudioWorklet if it ever matters.
-    proc = micCtx.createScriptProcessor(4096, 1, 1);
-    const mute = micCtx.createGain(); mute.gain.value = 0; // it only fires when wired to destination
+    proc = audioCtx.createScriptProcessor(4096, 1, 1);
+    const mute = audioCtx.createGain(); mute.gain.value = 0; // it only fires when wired to destination
     proc.onaudioprocess = (e) => {
       if (closed || ws?.readyState !== WebSocket.OPEN) return;
-      const pcm = downsampleTo16k(e.inputBuffer.getChannelData(0), micCtx!.sampleRate);
+      const pcm = downsampleTo16k(e.inputBuffer.getChannelData(0), audioCtx!.sampleRate);
       send({ realtimeInput: { mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: int16ToBase64(pcm) }] } });
     };
-    src.connect(proc); proc.connect(mute); mute.connect(micCtx.destination);
+    src.connect(proc); proc.connect(mute); mute.connect(audioCtx.destination);
   }
 
   function playPcm(pcm: Int16Array, rate: number) {
-    if (!playCtx) playCtx = new AudioContext();
-    if (playCtx.state === "suspended") void playCtx.resume();
-    const buf = playCtx.createBuffer(1, pcm.length, rate);
+    const ctx = audioCtx;
+    if (!ctx) return; // mic (and thus the shared context) not up yet — no context to play on
+    if (ctx.state === "suspended") void ctx.resume();
+    const buf = ctx.createBuffer(1, pcm.length, rate);
     const ch = buf.getChannelData(0);
     for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
-    const node = playCtx.createBufferSource();
+    const node = ctx.createBufferSource();
     node.buffer = buf;
-    node.connect(playCtx.destination);
-    const now = playCtx.currentTime;
+    node.connect(ctx.destination);
+    const now = ctx.currentTime;
     if (playHead < now) playHead = now;
     node.start(playHead);
     playHead += buf.duration;
@@ -208,11 +215,10 @@ export function startJarvisLive(opts: JarvisLiveOptions): JarvisLiveHandle {
     stopPlayback();
     try { proc?.disconnect(); } catch { /* noop */ }
     stream?.getTracks().forEach((t) => t.stop());
-    void micCtx?.close().catch(() => {});
-    void playCtx?.close().catch(() => {});
+    void audioCtx?.close().catch(() => {});
     try { ws?.close(); } catch { /* noop */ }
     ws = null;
-    opts.onState("closed");
+    setState("closed");
   }
 
   return { close };
