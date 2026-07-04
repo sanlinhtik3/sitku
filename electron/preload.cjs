@@ -2,7 +2,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 const methods = {
-  vault: ["getActiveVault", "listVaults", "createVault", "openVault", "switchVault", "revealActiveVault"],
+  vault: ["getActiveVault", "listVaults", "createVault", "openVault", "switchVault", "revealActiveVault", "forgetVault"],
   notes: ["listEntries", "listNotes", "readNote", "writeNote", "deleteNote", "createFolder", "deleteFolder", "renamePath", "revealPath", "watchNotes"],
   conversations: [
     "listSessions",
