@@ -142,7 +142,7 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { jarvisEnabled, jarvisModels, jarvisLiveMode, geminiKey } from "@/components/jarvis/jarvisBrain";
+import { jarvisEnabled, jarvisModels, jarvisLiveMode, jarvisWakeWord, geminiKey } from "@/components/jarvis/jarvisBrain";
 import { cn } from "@/lib/utils";
 import { platformFileManager } from "@/lib/desktopChrome";
 import { applyAccent } from "@/lib/accentColor";
@@ -586,6 +586,7 @@ export default function KnowledgeWorkspacePage() {
   const [jarvisTtsModel, setJarvisTtsModel] = useState(() => jarvisModels.tts());
   const [jarvisLive, setJarvisLive] = useState(() => jarvisLiveMode.get());
   const [jarvisLiveModel, setJarvisLiveModel] = useState(() => jarvisModels.live());
+  const [jarvisWake, setJarvisWake] = useState(() => jarvisWakeWord.get());
   // JARVIS Gemini API key management — view (masked), edit, save, clear. Never expose the raw key
   // in plaintext by default; toggle reveals it only on explicit user action.
   const [jarvisKeyEditing, setJarvisKeyEditing] = useState(false);
@@ -2683,6 +2684,13 @@ export default function KnowledgeWorkspacePage() {
                                 <div className="text-xs text-[var(--bb-text-3)]">Phone-call mode — one duplex WebSocket (server VAD, barge-in, sub-second). Reopen the orb after toggling.</div>
                               </div>
                               <Switch checked={jarvisLive} onCheckedChange={(checked) => { jarvisLiveMode.set(checked); setJarvisLive(checked); }} />
+                            </div>
+                            <div className="flex items-center justify-between gap-4 border-t border-[var(--bb-bg-3)] pt-3">
+                              <div>
+                                <div className="text-sm font-medium text-[var(--bb-text-1)]">Wake word <span className="ml-1 rounded bg-[var(--bb-bg-4)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--bb-text-3)]">Hands-free</span></div>
+                                <div className="text-xs text-[var(--bb-text-3)]">Say “Jarvis” to open the orb while it's closed. Listens continuously via browser speech — the mic stays on.</div>
+                              </div>
+                              <Switch checked={jarvisWake} onCheckedChange={(checked) => { jarvisWakeWord.set(checked); setJarvisWake(checked); }} />
                             </div>
                             {jarvisLive && (
                               <div className="flex items-center justify-between gap-4 border-t border-[var(--bb-bg-3)] pt-3">

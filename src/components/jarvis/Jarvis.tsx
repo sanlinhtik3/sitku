@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useJarvisVoice } from "@/components/jarvis/useJarvisVoice";
 import { getSavedVoiceLanguage } from "@/components/agent-chat/chat-input/VoiceInput";
-import { geminiKey, jarvisEnabled, jarvisLiveMode, type Intent } from "@/components/jarvis/jarvisBrain";
+import { geminiKey, jarvisEnabled, jarvisLiveMode, jarvisWakeWord, isWakePhrase, type Intent } from "@/components/jarvis/jarvisBrain";
 import { startJarvisLive, LIVE_SYSTEM, type JarvisLiveHandle } from "@/components/jarvis/jarvisLive";
 import type { ToolExecutor } from "@/components/jarvis/jarvisTools";
 
@@ -221,6 +221,34 @@ export function Jarvis({ brain }: JarvisProps) {
       void brain.offline(text).then((r) => { setReply(r); setPhase("speaking"); speak(r); });
     },
   });
+
+  // ── Wake word (opt-in) ── while the orb is CLOSED, the browser recognizer listens for
+  // "Jarvis" and opens it. ponytail: reuses Web Speech (zero deps); it auto-stops, so we
+  // restart on end. Runs only when JARVIS is enabled + wake is on + the orb is closed, so
+  // it never fights the main mic. Ceiling: cloud STT battery/privacy → on-device wake later.
+  const [wakeOn, setWakeOn] = useState(() => jarvisWakeWord.get());
+  useEffect(() => {
+    const sync = () => setWakeOn(jarvisWakeWord.get());
+    window.addEventListener(jarvisWakeWord.EVENT, sync);
+    return () => window.removeEventListener(jarvisWakeWord.EVENT, sync);
+  }, []);
+  const shouldWakeRef = useRef(false);
+  const wakeStartRef = useRef<() => void>(() => {});
+  const wake = useSpeechRecognition({
+    language: "en-US",
+    continuous: true,
+    interimResults: false,
+    onResult: (text, isFinal) => { if (isFinal && isWakePhrase(text)) setOpen(true); },
+    onEnd: () => { if (shouldWakeRef.current) setTimeout(() => wakeStartRef.current(), 400); },
+  });
+  wakeStartRef.current = wake.start;
+  useEffect(() => {
+    const should = wakeOn && enabled && !open;
+    shouldWakeRef.current = should;
+    if (should) wake.start(); else wake.stop();
+    return () => { shouldWakeRef.current = false; wake.stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wakeOn, enabled, open]);
 
   const resumeOrIdle = useCallback(() => {
     // Cooldown: after JARVIS speaks, do NOT re-arm the mic instantly. TTS audio + room reverb are

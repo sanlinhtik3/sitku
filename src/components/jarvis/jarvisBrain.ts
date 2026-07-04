@@ -44,6 +44,21 @@ export const geminiKey = {
   set: (k: string) => localStorage.setItem(KEY_STORE, k.trim()),
 };
 
+// Wake word — opt-in, hands-free. While the orb is CLOSED, the browser recognizer listens
+// for "Jarvis" and opens it. ponytail: reuses Web Speech (zero deps); ceiling = always-on
+// cloud STT (battery/privacy) — swap for on-device openWakeWord if that becomes a problem.
+const WAKE_STORE = "beebot-jarvis-wake";
+export const jarvisWakeWord = {
+  EVENT: "beebot-jarvis-wake-changed",
+  get: () => localStorage.getItem(WAKE_STORE) === "1",
+  set: (on: boolean) => {
+    localStorage.setItem(WAKE_STORE, on ? "1" : "0");
+    window.dispatchEvent(new Event("beebot-jarvis-wake-changed"));
+  },
+};
+// "jarvis", "hey jarvis", "ok/okay jarvis" — case-insensitive, word-boundary so "jar" won't fire.
+export const isWakePhrase = (text: string) => /\b(hey\s+|ok\s+|okay\s+)?jarvis\b/i.test(text);
+
 // Live (realtime duplex) mode — opt-in. When on, the orb runs a Gemini Live WebSocket
 // session (jarvisLive.ts) instead of the record→understand→speak turn loop. Default OFF
 // so the proven walkie-talkie path stays the shipping default until Live is device-verified.
