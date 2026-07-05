@@ -16,6 +16,24 @@
 
 ---
 
+## 📥 Download & macOS Setup (Gatekeeper Fix)
+
+[GitHub Releases](https://github.com/sanlinhtik3/sitku/releases/latest) ကနေ Mac (`.dmg`) သို့မဟုတ် Windows (`.exe`) ကို ဒေါင်းလုဒ် ရယူနိုင်ပါတယ်။
+
+> [!IMPORTANT]
+> **macOS မှာ "App is damaged and can't be opened" လို့ ပြလာရင် -**
+> အင်တာနက်က ဒေါင်းလုဒ်ဆွဲထားတဲ့ Open-source App ဖြစ်လို့ macOS Gatekeeper က ယာယီ ပိတ်ဆို့ထားတာ (Quarantine) ဖြစ်ပါတယ်။ App တကယ် ပျက်စီးနေတာမျိုး **မဟုတ်ပါ**။
+> 
+> **ဖြေရှင်းနည်း (၃၀ စက္ကန့်) -**
+> 1. `Sitku.app` ကို **Applications** Folder ထဲ ဆွဲထည့်ပါ။
+> 2. **Terminal** ကို ဖွင့်ပြီး အောက်က Command ကို Run ပါ -
+> ```bash
+> xattr -cr /Applications/Sitku.app
+> ```
+> 3. ပြီးရင် Sitku App ကို ပုံမှန်အတိုင်း ဖွင့်သုံးလို့ ရပါပြီ။ (နောက်တစ်ခါ ဖွင့်တိုင်း တန်းပွင့်သွားပါမယ်!)
+
+---
+
 ## 🚀 Quickstart & Development
 
 ### Prerequisites
