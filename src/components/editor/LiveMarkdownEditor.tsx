@@ -227,14 +227,20 @@ class ReactBlockWidget extends WidgetType {
 
     // Ponytail Senior Dev Fix: React 18 renders asynchronously! When the widget expands from 0px
     // to its actual rendered height, CodeMirror's internal line height map MUST be told to remeasure.
-    // Check height delta (> 1px) to prevent infinite ResizeObserver / requestMeasure loops on large pastes!
+    // Check height delta (> 1px) and schedule via requestAnimationFrame to prevent tile stack crashes on large pastes!
     let lastHeight = -1;
+    let measureRAF: any = null;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const h = entry.contentRect.height;
         if (Math.abs(h - lastHeight) > 1) {
           lastHeight = h;
-          view.requestMeasure();
+          if (!measureRAF) {
+            measureRAF = requestAnimationFrame(() => {
+              measureRAF = null;
+              if (!view.destroying) view.requestMeasure();
+            });
+          }
         }
       }
     });
@@ -468,7 +474,7 @@ function buildLivePreviewDecorations(view: EditorView, richRefs: RichRefs): Deco
     ...quoteDecos,
     ...builder.map(({ from, to, deco }) => deco.range(from, to)),
   ];
-  return Decoration.set(ranges);
+  return Decoration.set(ranges, true);
 }
 
 // ── Wikilink decorations [[Note]] / [[Note|Display]] ────────────────────────
@@ -529,7 +535,7 @@ function buildWikilinkDecorations(view: EditorView, notesRef: { current: WikiNot
     }
   }
   builder.sort((a, b) => a.from - b.from || (a.to - a.from) - (b.to - b.from));
-  return Decoration.set(builder.map(({ from, to, deco }) => deco.range(from, to)));
+  return Decoration.set(builder.map(({ from, to, deco }) => deco.range(from, to)), true);
 }
 
 function makeWikilinkPlugin(notesRef: { current: WikiNote[] }, resolvedRef: { current: ((t: string) => boolean) | undefined }, activateRef: { current: ((target: string) => void) | undefined }) {
@@ -735,7 +741,7 @@ function buildBlockDecorations(state: EditorState, richRefs: RichRefs): Decorati
     ln += 1;
   }
 
-  return Decoration.set(ranges.map(({ from, to, deco }) => deco.range(from, to)));
+  return Decoration.set(ranges.map(({ from, to, deco }) => deco.range(from, to)), true);
 }
 
 function makeBlockField(richRefs: RichRefs) {

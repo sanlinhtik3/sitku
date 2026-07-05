@@ -608,19 +608,27 @@ function withInlineDecorations(children: ReactNode, onActivate: ((t: string) => 
 
 function extractCalloutInfo(children: ReactNode): { type: string | null; cleanedChildren: ReactNode } {
   const childArray = Children.toArray(children);
-  if (childArray.length === 0) return { type: null, cleanedChildren: children };
+  let firstIdx = 0;
+  while (firstIdx < childArray.length && typeof childArray[firstIdx] === "string" && !childArray[firstIdx].toString().trim()) {
+    firstIdx += 1;
+  }
+  if (firstIdx >= childArray.length) return { type: null, cleanedChildren: children };
 
-  const first = childArray[0];
+  const first = childArray[firstIdx];
   if (isValidElement(first)) {
     const pChildren = Children.toArray((first.props as { children?: ReactNode }).children);
-    if (pChildren.length > 0 && typeof pChildren[0] === "string") {
-      const match = /^\s*\[!([a-zA-Z0-9_-]+)\]\s*(.*)$/s.exec(pChildren[0]);
+    let pIdx = 0;
+    while (pIdx < pChildren.length && typeof pChildren[pIdx] === "string" && !pChildren[pIdx].toString().trim()) {
+      pIdx += 1;
+    }
+    if (pIdx < pChildren.length && typeof pChildren[pIdx] === "string") {
+      const match = /^\s*\[!([a-zA-Z0-9_-]+)\]\s*(.*)$/s.exec(pChildren[pIdx] as string);
       if (match) {
         const type = match[1];
         const restText = match[2];
-        const newPChildren = restText ? [restText, ...pChildren.slice(1)] : pChildren.slice(1);
+        const newPChildren = restText ? [...pChildren.slice(0, pIdx), restText, ...pChildren.slice(pIdx + 1)] : [...pChildren.slice(0, pIdx), ...pChildren.slice(pIdx + 1)];
         const newFirst = newPChildren.length > 0 ? cloneElement(first as ReactElement<{ children?: ReactNode }>, { ...(first.props as object), children: newPChildren }) : null;
-        const cleanedArray = newFirst ? [newFirst, ...childArray.slice(1)] : childArray.slice(1);
+        const cleanedArray = newFirst ? [...childArray.slice(0, firstIdx), newFirst, ...childArray.slice(firstIdx + 1)] : [...childArray.slice(0, firstIdx), ...childArray.slice(firstIdx + 1)];
         return { type, cleanedChildren: cleanedArray };
       }
     }
@@ -629,7 +637,7 @@ function extractCalloutInfo(children: ReactNode): { type: string | null; cleaned
     if (match) {
       const type = match[1];
       const restText = match[2];
-      const cleanedArray = restText ? [restText, ...childArray.slice(1)] : childArray.slice(1);
+      const cleanedArray = restText ? [...childArray.slice(0, firstIdx), restText, ...childArray.slice(firstIdx + 1)] : [...childArray.slice(0, firstIdx), ...childArray.slice(firstIdx + 1)];
       return { type, cleanedChildren: cleanedArray };
     }
   }
