@@ -81,8 +81,8 @@ export function SalesBarChart({ range, periodLabel }: Props) {
                 contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 11, borderRadius: 8 }}
                 formatter={(v: number | null, name: string) => [v == null ? "Future" : fmtMoney(v), name === "revenue" ? "Revenue" : "Spend"]}
               />
-              <Bar dataKey="revenue" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={8} />
-              <Bar dataKey="spend" fill="#ef4444" radius={[3, 3, 0, 0]} maxBarSize={8} />
+              <Bar dataKey="revenue" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={8} animationDuration={700} animationEasing="ease-out" />
+              <Bar dataKey="spend" fill="#ef4444" radius={[3, 3, 0, 0]} maxBarSize={8} animationDuration={700} animationEasing="ease-out" />
             </BarChart>
           </ResponsiveContainer>
         )}

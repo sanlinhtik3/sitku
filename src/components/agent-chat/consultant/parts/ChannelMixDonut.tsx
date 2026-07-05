@@ -58,7 +58,7 @@ export function ChannelMixDonut({
             <div className="h-[140px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={rows} dataKey="views" nameKey="platform" innerRadius={43} outerRadius={64} paddingAngle={2}>
+                  <Pie data={rows} dataKey="views" nameKey="platform" innerRadius={43} outerRadius={64} paddingAngle={2} animationDuration={700} animationEasing="ease-out">
                     {rows.map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
                   </Pie>
                   <Tooltip

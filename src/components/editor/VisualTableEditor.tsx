@@ -28,8 +28,9 @@ export function parseMarkdownTable(md: string): { headers: string[]; rows: strin
     line
       .replace(/^\|/, "")
       .replace(/\|$/, "")
-      .split("|")
-      .map((cell) => cell.trim());
+      .split(/(?<!\\)\|/)
+      // ponytail: unescape \| when reading into editor so inline formulas/pipes don't get split or corrupted!
+      .map((cell) => cell.replace(/\\\|/g, "|").trim());
 
   const headers = parseRow(lines[0]);
   const alignRow = parseRow(lines[1]);
@@ -65,7 +66,8 @@ export function formatMarkdownTable(headers: string[], rows: string[][], aligns:
   });
 
   const pad = (str: string, width: number, align: ColumnAlign) => {
-    const s = str || "";
+    // ponytail: escape any unescaped pipes when saving back to markdown table so syntax remains valid!
+    const s = (str || "").replace(/(?<!\\)\|/g, "\\|");
     if (align === "right") return s.padStart(width, " ");
     if (align === "center") {
       const leftPad = Math.floor((width - s.length) / 2);

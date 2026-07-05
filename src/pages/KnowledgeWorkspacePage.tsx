@@ -155,6 +155,7 @@ import { ThemeEditorDialog } from "@/components/settings/ThemeEditorDialog";
 import { VersionCheck } from "@/components/settings/VersionCheck";
 import { useWorkspaceIdentity } from "@/hooks/useWorkspaceIdentity";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsolatedRoom } from "@/hooks/useIsolatedRoom";
 import { useRepositories } from "@/repositories/runtime/RepositoryProvider";
 import type { NoteFile, NoteVersion, VaultEntry } from "@/repositories/contracts/notes";
 import { NoteTree } from "@/features/notes/sidebar/NoteTree";
@@ -321,15 +322,38 @@ function parseWikilinks(content: string): string[] {
   while ((match = WIKILINK_RE_GLOBAL.exec(content)) !== null) targets.push(match[1].trim());
   return targets;
 }
+
+// ponytail: replace O(N) linear array scans with a cached O(1) Hash Map lookup so graph building and wikilinks never freeze the UI thread!
+let cachedNotesRef: NoteFile[] | null = null;
+let noteIndexMap: Map<string, NoteFile> = new Map();
+
+function getNoteIndexMap(notes: NoteFile[]): Map<string, NoteFile> {
+  if (cachedNotesRef === notes && noteIndexMap.size > 0) return noteIndexMap;
+  cachedNotesRef = notes;
+  noteIndexMap = new Map();
+  for (const note of notes) {
+    const p = note.path.toLowerCase();
+    const t = (note.title || "").toLowerCase();
+    const tp = titleFromPath(note.path).toLowerCase();
+    noteIndexMap.set(p, note);
+    if (t && !noteIndexMap.has(t)) noteIndexMap.set(t, note);
+    if (tp && !noteIndexMap.has(tp)) noteIndexMap.set(tp, note);
+    if (p.endsWith(".md")) {
+      const base = p.replace(/\.md$/, "");
+      const slashIdx = base.lastIndexOf("/");
+      const name = slashIdx >= 0 ? base.slice(slashIdx + 1) : base;
+      if (!noteIndexMap.has(name)) noteIndexMap.set(name, note);
+      if (!noteIndexMap.has(`${name}.md`)) noteIndexMap.set(`${name}.md`, note);
+    }
+  }
+  return noteIndexMap;
+}
+
 function resolveWikilinkTarget(target: string, notes: NoteFile[]): NoteFile | null {
   if (!target) return null;
+  const map = getNoteIndexMap(notes);
   const needle = target.toLowerCase();
-  return (
-    notes.find((note) => (note.title || "").toLowerCase() === needle) ||
-    notes.find((note) => titleFromPath(note.path).toLowerCase() === needle) ||
-    notes.find((note) => note.path.toLowerCase().endsWith(`/${needle}.md`) || note.path.toLowerCase() === `${needle}.md`) ||
-    null
-  );
+  return map.get(needle) || map.get(`${needle}.md`) || null;
 }
 
 function folderFromPath(notePath: string) {
@@ -506,10 +530,10 @@ export default function KnowledgeWorkspacePage() {
   const [graphOpen, setGraphOpen] = useState(() => typeof window !== "undefined" && window.location.hash === "#graph");
   // Hash-routed version history (local File Recovery) for the active note.
   const [historyOpen, setHistoryOpen] = useState(() => typeof window !== "undefined" && window.location.hash === "#history");
-  // Hash-routed Personal CFO (FlowState finance surface).
-  const [cfoOpen, setCfoOpen] = useState(() => typeof window !== "undefined" && window.location.hash === "#cfo");
-  // Hash-routed Agent Consultant — opens as a full-screen page (not the agent rail).
-  const [consultantOpen, setConsultantOpen] = useState(() => typeof window !== "undefined" && window.location.hash === "#consultant");
+  // ponytail: Grok-style Isolated Room routing (?_s=cfo/consultant)
+  const { activeRoom, openRoom, closeRoom } = useIsolatedRoom();
+  const cfoOpen = activeRoom === "cfo";
+  const consultantOpen = activeRoom === "consultant";
   const [versions, setVersions] = useState<NoteVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
 
@@ -692,8 +716,6 @@ export default function KnowledgeWorkspacePage() {
       setSearchModalOpen(h === "#search");
       setGraphOpen(h === "#graph");
       setHistoryOpen(h === "#history");
-      setCfoOpen(h === "#cfo");
-      setConsultantOpen(h === "#consultant");
     };
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
@@ -722,25 +744,11 @@ export default function KnowledgeWorkspacePage() {
     setHistoryOpen(false);
     if (window.location.hash === "#history") history.replaceState(null, "", window.location.pathname + window.location.search);
   }, []);
-  // Personal CFO (FlowState) — hash-routed dialog.
-  const openCfo = useCallback(() => {
-    if (window.location.hash !== "#cfo") window.location.hash = "cfo";
-    else setCfoOpen(true);
-  }, []);
-  const closeCfo = useCallback(() => {
-    setCfoOpen(false);
-    if (window.location.hash === "#cfo") history.replaceState(null, "", window.location.pathname + window.location.search);
-  }, []);
-  // Agent Consultant opens as a FULL-SCREEN page (not the agent rail) — hash-driven via `#consultant`.
-  // The overlay covers the whole workspace; a Back button (and Esc/hash clear) returns to notes.
-  const openConsultant = useCallback(() => {
-    if (window.location.hash !== "#consultant") window.location.hash = "consultant";
-    else setConsultantOpen(true);
-  }, []);
-  const closeConsultant = useCallback(() => {
-    setConsultantOpen(false);
-    if (window.location.hash === "#consultant") history.replaceState(null, "", window.location.pathname + window.location.search);
-  }, []);
+  // Personal CFO & Agent Consultant — isolated rooms (?_s=cfo/consultant).
+  const openCfo = useCallback(() => openRoom("cfo"), [openRoom]);
+  const closeCfo = useCallback(() => closeRoom(), [closeRoom]);
+  const openConsultant = useCallback(() => openRoom("consultant"), [openRoom]);
+  const closeConsultant = useCallback(() => closeRoom(), [closeRoom]);
 
   const monospaceFontStack = fontStack(appearanceSettings.monospaceFonts);
   const currentFontList = fontTarget ? appearanceSettings[fontTarget] : [];
@@ -999,6 +1007,8 @@ export default function KnowledgeWorkspacePage() {
   }, [activePath, notes, closeHistory]);
 
   const openNotePath = useCallback((notePath: string) => {
+    // ponytail: clicking the already-active tab should stay calm and still without triggering View Transition animations!
+    if (notePath === activePathRef.current) return;
     const apply = () => {
       setOpenTabs((current) => (current.includes(notePath) ? current : [...current, notePath]));
       setActivePath(notePath);
@@ -1859,8 +1869,6 @@ export default function KnowledgeWorkspacePage() {
     [noteList, deferredNoteContents, activePath, deferredDraft],
   );
 
-  const wikiNotes = useMemo(() => liveNotes.map((note) => ({ path: note.path, title: note.title || titleFromPath(note.path) })), [liveNotes]);
-
   const dataviewNotes = useMemo(
     () =>
       liveNotes.map((note) => ({
@@ -2008,6 +2016,7 @@ export default function KnowledgeWorkspacePage() {
         "--beebot-note-font-size": `${appearanceSettings.fontSize}px`,
       } as CSSProperties}
     >
+      {/* ponytail: Grok-style DOM hibernation when in isolated room (?_s=cfo/consultant) */}
       <div
         className="h-full min-h-0 flex flex-col"
         style={{
@@ -2015,6 +2024,7 @@ export default function KnowledgeWorkspacePage() {
           paddingBottom: "env(safe-area-inset-bottom, 0px)",
           paddingLeft: "env(safe-area-inset-left, 0px)",
           paddingRight: "env(safe-area-inset-right, 0px)",
+          ...(cfoOpen || consultantOpen ? { display: "none", contentVisibility: "hidden", pointerEvents: "none" } : {}),
         }}
       >
 
@@ -2096,7 +2106,7 @@ export default function KnowledgeWorkspacePage() {
               onCollapseAll={collapseAllFolders}
             />
 
-            <AppNav onOpenConsultant={openConsultant} onOpenCfo={openCfo} />
+            <AppNav onOpenConsultant={openConsultant} onOpenCfo={openCfo} activeRoom={activeRoom} />
 
             {needsReopenFolder && (
               <div className="px-2.5 pb-2">
@@ -2243,9 +2253,10 @@ export default function KnowledgeWorkspacePage() {
                                   onLinkShortcut={promptLinkAndApply}
                                   onBlur={flushTitleSync}
                                   placeholder="Start writing…"
-                                  notes={wikiNotes}
+                                  notes={dataviewNotes}
                                   onWikilinkActivate={handleWikilinkActivate}
                                   isResolvedTarget={isResolvedWikilink}
+                                  getNoteContent={getEmbedContent}
                                 />
                               ) : (
                                 <div style={{ fontFamily: textFontStack }}>

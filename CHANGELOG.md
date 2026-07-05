@@ -3,6 +3,15 @@
 All notable changes to Sitku are recorded here. Newest first.
 Edit this file each release — the app shows the top entry to users automatically.
 
+## [2026.7.5] — 2026-07-05
+
+### Added
+- **💎 Obsidian-Style Live Preview:** Code blocks, Mermaid diagrams, and File Trees now render as beautiful, interactive UI cards directly while editing. Click any card to edit its raw markdown!
+
+### Fixed
+- **🎯 Zero Cursor Misalignment:** Fixed an issue where clicking near code blocks caused the text cursor to jump or misalign.
+- **🎨 Layout Polish:** Removed unwanted horizontal scrollbars and text clipping in editor blocks.
+
 ## [2026.7.4] — 2026-07-04
 
 ### Added

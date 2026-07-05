@@ -91,7 +91,7 @@ export function ActivityInsightsCard({ range, periodLabel }: { range: DateRange;
                 contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 11, borderRadius: 8 }}
                 formatter={(v: number | null) => v == null ? ["Future", "Engagement"] : [fmt(Number(v)), "Engagement"]}
               />
-              <Line type="monotone" dataKey="engagement" stroke="url(#engGrad)" strokeWidth={2.5} dot={{ r: 2.5, fill: "#22c55e" }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="engagement" stroke="url(#engGrad)" strokeWidth={2.5} dot={{ r: 2.5, fill: "#22c55e" }} activeDot={{ r: 5 }} animationDuration={700} animationEasing="ease-out" />
             </LineChart>
           </ResponsiveContainer>
         )}

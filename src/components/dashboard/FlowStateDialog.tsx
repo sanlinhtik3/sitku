@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, lazy, Suspense, type CSSProperties } from "react";
+import { useState, useMemo, useRef, useEffect, lazy, Suspense, type CSSProperties } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,6 +38,14 @@ interface FlowStateDialogProps {
 
 export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogProps) {
   const [activeTab, setActiveTab] = useState("cfo");
+
+  // ponytail: auto-activate eco-mode to kill heavy GPU backdrop-blurs when full-screen modal opens
+  useEffect(() => {
+    if (open) {
+      document.documentElement.setAttribute("data-eco-mode", "true");
+      return () => document.documentElement.removeAttribute("data-eco-mode");
+    }
+  }, [open]);
   const navigate = useNavigate();
   const openInSitku = (prompt: string) => {
     try { sessionStorage.setItem("sitku_prefill", prompt); } catch { }

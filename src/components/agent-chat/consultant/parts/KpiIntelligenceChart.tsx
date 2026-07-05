@@ -132,11 +132,11 @@ export function KpiIntelligenceChart({ range, dashboard, periodLabel }: Props) {
                 formatter={(v: number | null, name: string) => [v == null ? "Future" : fmt(Number(v)), name]}
               />
               <Legend iconType="circle" wrapperStyle={{ fontSize: 10 }} />
-              <Line yAxisId="growth" type="monotone" dataKey="views" name="Views" stroke="#38bdf8" strokeWidth={2.4} dot={false} activeDot={{ r: 4 }} />
-              <Line yAxisId="growth" type="monotone" dataKey="engagement" name="Engagement" stroke="#22c55e" strokeWidth={2.4} dot={false} activeDot={{ r: 4 }} />
-              <Line yAxisId="growth" type="monotone" dataKey="followers" name="Followers" stroke="#a78bfa" strokeWidth={2.2} dot={false} activeDot={{ r: 4 }} />
-              <Line yAxisId="money" type="monotone" dataKey="revenue" name={`Revenue (${CONSULTANT_FINANCE_CURRENCY})`} stroke="#f59e0b" strokeWidth={2.3} dot={false} activeDot={{ r: 4 }} />
-              <Line yAxisId="money" type="monotone" dataKey="spend" name={`Spend (${CONSULTANT_FINANCE_CURRENCY})`} stroke="#fb7185" strokeWidth={2.1} dot={false} activeDot={{ r: 4 }} />
+              <Line yAxisId="growth" type="monotone" dataKey="views" name="Views" stroke="#38bdf8" strokeWidth={2.4} dot={false} activeDot={{ r: 4 }} animationDuration={700} animationEasing="ease-out" />
+              <Line yAxisId="growth" type="monotone" dataKey="engagement" name="Engagement" stroke="#22c55e" strokeWidth={2.4} dot={false} activeDot={{ r: 4 }} animationDuration={700} animationEasing="ease-out" />
+              <Line yAxisId="growth" type="monotone" dataKey="followers" name="Followers" stroke="#a78bfa" strokeWidth={2.2} dot={false} activeDot={{ r: 4 }} animationDuration={700} animationEasing="ease-out" />
+              <Line yAxisId="money" type="monotone" dataKey="revenue" name={`Revenue (${CONSULTANT_FINANCE_CURRENCY})`} stroke="#f59e0b" strokeWidth={2.3} dot={false} activeDot={{ r: 4 }} animationDuration={700} animationEasing="ease-out" />
+              <Line yAxisId="money" type="monotone" dataKey="spend" name={`Spend (${CONSULTANT_FINANCE_CURRENCY})`} stroke="#fb7185" strokeWidth={2.1} dot={false} activeDot={{ r: 4 }} animationDuration={700} animationEasing="ease-out" />
             </LineChart>
           </ResponsiveContainer>
         )}

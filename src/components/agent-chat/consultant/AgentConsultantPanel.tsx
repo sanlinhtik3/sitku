@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useMemo } from "react";
+import { lazy, Suspense, useState, useMemo, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -36,6 +36,12 @@ interface UserMetadata {
 export function AgentConsultantPanel({ userId, onClose }: Props) {
   const { user } = useAuth();
   const qc = useQueryClient();
+
+  // ponytail: auto-activate eco-mode to kill heavy GPU backdrop-blurs when full-screen modal mounts
+  useEffect(() => {
+    document.documentElement.setAttribute("data-eco-mode", "true");
+    return () => document.documentElement.removeAttribute("data-eco-mode");
+  }, []);
 
   const [rangePreset, setRangePreset] = useState<ConsultantRangePreset>("this_week");
   const rangeSelection = useMemo(() => consultantRangeForPreset(rangePreset), [rangePreset]);

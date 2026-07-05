@@ -1,5 +1,7 @@
-import { useState, useEffect, useLayoutEffect, useRef, type CSSProperties, type MutableRefObject } from "react";
-import { EditorState, Compartment, Prec } from "@codemirror/state";
+import { useState, useEffect, useLayoutEffect, useRef, type CSSProperties, type MutableRefObject, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { NoteReader } from "@/components/editor/NoteReader";
+import { EditorState, EditorSelection, Compartment, Prec, StateField } from "@codemirror/state";
 import { EditorView, keymap, drawSelection, dropCursor, highlightActiveLine, Decoration, WidgetType, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { saveAttachment, getAttachment } from "@/repositories/local/attachmentStore";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -15,6 +17,10 @@ import { VisualTableEditor } from "@/components/editor/VisualTableEditor";
 export interface WikiNote {
   path: string;
   title: string;
+  // Optional body — only present when the host feeds content-bearing notes (so
+  // dataview blocks rendered inside the editor can run their queries). Wikilink
+  // autocomplete/resolution ignore it.
+  content?: string;
 }
 
 // ── Public types ───────────────────────────────────────────────────────────
@@ -58,6 +64,8 @@ export interface LiveMarkdownEditorProps {
   onWikilinkActivate?: (target: string) => void;
   /** Used to render unresolved wikilinks in a muted color. */
   isResolvedTarget?: (target: string) => boolean;
+  /** Resolves an `![[Target]]` embed to that note's body — for inline transclusion rendering. */
+  getNoteContent?: (target: string) => string | null | undefined;
   /** Fired when the editor loses focus — drives the silent title→filename sync. */
   onBlur?: () => void;
 }
@@ -182,6 +190,53 @@ class CalloutHeaderWidget extends WidgetType {
   }
 }
 
+class ReactBlockWidget extends WidgetType {
+  private root: Root | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  constructor(private readonly key: string, private readonly render: () => ReactNode) { super(); }
+  eq(other: ReactBlockWidget) { return other.key === this.key; }
+  toDOM(view: EditorView) {
+    const dom = document.createElement("div");
+    dom.className = "cm-rich-block";
+    dom.setAttribute("contenteditable", "false");
+    dom.addEventListener("dblclick", () => {
+      const pos = view.posAtDOM(dom);
+      view.dispatch({ selection: { anchor: pos + 1 } });
+      view.focus();
+    });
+    this.root = createRoot(dom);
+    this.root.render(this.render());
+
+    // Ponytail Senior Dev Fix: React 18 renders asynchronously! When the widget expands from 0px
+    // to its actual rendered height, CodeMirror's internal line height map MUST be told to remeasure.
+    // Calling view.requestMeasure() directly triggers CodeMirror to re-read all DOM widget heights!
+    const ro = new ResizeObserver(() => {
+      view.requestMeasure();
+    });
+    ro.observe(dom);
+    this.resizeObserver = ro;
+
+    return dom;
+  }
+  // Smart Event Interception:
+  // Interactive elements (buttons, links, inputs, selects) handle their own clicks.
+  // Other clicks on/near the card let CodeMirror position the caret normally!
+  ignoreEvent(event: Event) {
+    const target = event.target as HTMLElement | null;
+    if (target && (target.closest("button") || target.closest("a") || target.closest("input") || target.closest("select") || target.closest(".bb-dataview-tab"))) {
+      return true;
+    }
+    return false;
+  }
+  destroy() {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    const r = this.root;
+    this.root = null;
+    queueMicrotask(() => r?.unmount());
+  }
+}
+
 // A quote line gets a left bar. It's structural STYLE, not a marker — so it stays even on
 // the caret line (only the raw ">" reveals when you edit).
 const quoteLineDeco = Decoration.line({ class: "cm-quoteline" });
@@ -199,7 +254,16 @@ function safeDecorations(build: () => DecorationSet): DecorationSet {
   try { return build(); } catch (err) { console.error("[editor] decoration build failed", err); return Decoration.none; }
 }
 
-function buildLivePreviewDecorations(view: EditorView): DecorationSet {
+// Refs the fenced-block widget needs to hand NoteReader (dataview queries + wikilink
+// clicks). Held as refs so the module-level plugin always sees the latest without rebuild.
+interface RichRefs {
+  notesRef: MutableRefObject<WikiNote[]>;
+  onWikilinkActivateRef: MutableRefObject<((target: string) => void) | undefined>;
+  isResolvedTargetRef: MutableRefObject<((target: string) => boolean) | undefined>;
+  getNoteContentRef: MutableRefObject<((target: string) => string | null | undefined) | undefined>;
+}
+
+function buildLivePreviewDecorations(view: EditorView, richRefs: RichRefs): DecorationSet {
   const builder: { from: number; to: number; deco: Decoration }[] = [];
   const quoteLineStarts: number[] = [];
   const quoteSeen = new Set<number>();
@@ -232,14 +296,17 @@ function buildLivePreviewDecorations(view: EditorView): DecorationSet {
       from,
       to,
       enter: (node) => {
-        const startLine = view.state.doc.lineAt(node.from).number;
-        const endLine = view.state.doc.lineAt(Math.min(node.to, docTotal)).number;
+        if (node.from > docTotal) return false;
+        const safeFrom = Math.max(0, Math.min(node.from, docTotal));
+        const safeTo = Math.max(0, Math.min(node.to, docTotal));
+        const startLine = view.state.doc.lineAt(safeFrom).number;
+        const endLine = view.state.doc.lineAt(safeTo).number;
         let onLiveLine = false;
         for (let i = startLine; i <= endLine; i += 1) if (liveLines.has(i)) { onLiveLine = true; break; }
 
         // Quote bar is structural — register it for EVERY quote line, caret or not.
         if (node.name === "QuoteMark") {
-          const line = view.state.doc.lineAt(node.from);
+          const line = view.state.doc.lineAt(safeFrom);
           if (!quoteSeen.has(line.number)) { quoteSeen.add(line.number); quoteLineStarts.push(line.from); }
         }
 
@@ -276,7 +343,12 @@ function buildLivePreviewDecorations(view: EditorView): DecorationSet {
           case "EmphasisMark":
           case "StrongEmphasisMark":
           case "StrikethroughMark":
-          case "CodeMark":
+          case "CodeMark": {
+            const markText = view.state.sliceDoc(node.from, node.to);
+            if (markText.length >= 3 && (/^`{3,}$/.test(markText) || /^~{3,}$/.test(markText))) return;
+            if (node.to > node.from) builder.push({ from: node.from, to: node.to, deco: hide });
+            return;
+          }
           case "HighlightMark":
           case "LinkMark": {
             if (node.to > node.from) builder.push({ from: node.from, to: node.to, deco: hide });
@@ -488,17 +560,138 @@ function makeSlashCompletions() {
   };
 }
 
-const livePreview = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    constructor(view: EditorView) { this.decorations = safeDecorations(() => buildLivePreviewDecorations(view)); }
-    update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged || update.selectionSet)
-        this.decorations = safeDecorations(() => buildLivePreviewDecorations(update.view));
+function makeLivePreview(richRefs: RichRefs) {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) { this.decorations = safeDecorations(() => buildLivePreviewDecorations(view, richRefs)); }
+      update(update: ViewUpdate) {
+        if (update.docChanged || update.viewportChanged || update.selectionSet)
+          this.decorations = safeDecorations(() => buildLivePreviewDecorations(update.view, richRefs));
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
+}
+
+// Resolve an embed target to a note body from the in-memory notes.
+function embedResolver(richRefs: RichRefs) {
+  return (target: string): string | null | undefined => {
+    const t = target.split("#")[0].trim().toLowerCase();
+    const hit = richRefs.notesRef.current.find((n) => {
+      const base = (n.path.replace(/\.md$/i, "").split("/").pop() || n.path).toLowerCase();
+      return n.title.toLowerCase() === t || n.path.toLowerCase() === t || base === t;
+    });
+    const body = hit?.content;
+    return body && body.trim() ? body : richRefs.getNoteContentRef.current?.(target);
+  };
+}
+
+// One block widget = NoteReader mounted on a slice of the doc -> renders exactly as Reading mode.
+function noteReaderBlock(md: string, richRefs: RichRefs): Decoration {
+  return Decoration.replace({
+    block: true,
+    widget: new ReactBlockWidget(md, () => (
+      <NoteReader
+        content={md}
+        className="!mx-0 !my-0 !max-w-none !px-0 !py-0"
+        notes={richRefs.notesRef.current}
+        onWikilinkActivate={richRefs.onWikilinkActivateRef.current}
+        isResolvedTarget={richRefs.isResolvedTargetRef.current}
+        getNoteContent={embedResolver(richRefs)}
+      />
+    )),
+  });
+}
+
+const EMBED_LINE_RE = /^!\[\[[^[\]\r\n]+\]\]$/;
+
+function buildBlockDecorations(state: EditorState, richRefs: RichRefs): DecorationSet {
+  const ranges: { from: number; to: number; deco: Decoration }[] = [];
+  const doc = state.doc;
+  const liveLines = new Set<number>();
+  for (const range of state.selection.ranges) {
+    const a = doc.lineAt(range.from).number;
+    const b = doc.lineAt(range.to).number;
+    for (let i = a; i <= b; i += 1) liveLines.add(i);
+  }
+  const anyLive = (startLine: number, endLine: number) => {
+    for (let i = startLine; i <= endLine; i += 1) if (liveLines.has(i)) return true;
+    return false;
+  };
+
+  // 0) YAML Frontmatter (`--- … ---` at doc start) stays raw editable YAML!
+  const fmRanges: Array<[number, number]> = [];
+  if (doc.lines >= 2 && doc.line(1).text.trim() === "---") {
+    let endLn = 2;
+    while (endLn <= doc.lines && doc.line(endLn).text.trim() !== "---") endLn += 1;
+    if (endLn <= doc.lines) fmRanges.push([1, endLn]);
+  }
+  const inFm = (ln: number) => fmRanges.some(([a, b]) => ln >= a && ln <= b);
+
+  // 1) Fenced code line scan (code blocks, file trees, mermaid diagrams).
+  const fencedRanges: Array<[number, number]> = [];
+  for (let ln = 1; ln <= doc.lines; ) {
+    if (inFm(ln)) { ln += 1; continue; }
+    const text = doc.line(ln).text.trim();
+    if (text.startsWith("```") || text.startsWith("~~~")) {
+      const fence = text.slice(0, 3);
+      let endLn = ln + 1;
+      while (endLn <= doc.lines && !doc.line(endLn).text.trim().startsWith(fence)) endLn += 1;
+      if (endLn <= doc.lines) {
+        fencedRanges.push([ln, endLn]);
+        if (!anyLive(ln, endLn)) {
+          const from = doc.line(ln).from;
+          const to = doc.line(endLn).to;
+          ranges.push({ from, to, deco: noteReaderBlock(state.sliceDoc(from, to), richRefs) });
+        }
+        ln = endLn + 1; continue;
+      }
     }
-  },
-  { decorations: (v) => v.decorations },
-);
+    ln += 1;
+  }
+  const inFenced = (ln: number) => fencedRanges.some(([a, b]) => ln >= a && ln <= b);
+
+  // 2) `$$…$$` math blocks + `![[…]]` embeds via line scan.
+  for (let ln = 1; ln <= doc.lines; ) {
+    if (inFenced(ln) || inFm(ln)) { ln += 1; continue; }
+    const line = doc.line(ln);
+    const text = line.text.trim();
+
+    if (EMBED_LINE_RE.test(text)) {
+      if (!liveLines.has(ln)) ranges.push({ from: line.from, to: line.to, deco: noteReaderBlock(text, richRefs) });
+      ln += 1; continue;
+    }
+
+    if (text.startsWith("$$")) {
+      let endLn = ln;
+      if (!(text.length >= 4 && text.endsWith("$$"))) {
+        endLn = ln + 1;
+        while (endLn <= doc.lines && !doc.line(endLn).text.trim().endsWith("$$")) endLn += 1;
+      }
+      if (endLn <= doc.lines) {
+        const from = line.from;
+        const to = doc.line(endLn).to;
+        if (!anyLive(ln, endLn)) ranges.push({ from, to, deco: noteReaderBlock(state.sliceDoc(from, to), richRefs) });
+        ln = endLn + 1; continue;
+      }
+    }
+    ln += 1;
+  }
+
+  return Decoration.set(ranges.map(({ from, to, deco }) => deco.range(from, to)), true);
+}
+
+function makeBlockField(richRefs: RichRefs) {
+  return StateField.define<DecorationSet>({
+    create: (state) => safeDecorations(() => buildBlockDecorations(state, richRefs)),
+    update: (deco, tr) =>
+      tr.docChanged || tr.selection
+        ? safeDecorations(() => buildBlockDecorations(tr.state, richRefs))
+        : deco,
+    provide: (f) => EditorView.decorations.from(f),
+  });
+}
 
 // ── Highlight style (heading sizes, code style, link color etc.) ────────────
 const beebotMarkdownHighlight = HighlightStyle.define([
@@ -729,6 +922,7 @@ export function LiveMarkdownEditor({
   notes,
   onWikilinkActivate,
   isResolvedTarget,
+  getNoteContent,
   onBlur,
 }: LiveMarkdownEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -745,6 +939,7 @@ export function LiveMarkdownEditor({
   const notesRef = useRef<WikiNote[]>(notes || []);
   const onWikilinkActivateRef = useRef(onWikilinkActivate);
   const isResolvedTargetRef = useRef(isResolvedTarget);
+  const getNoteContentRef = useRef(getNoteContent);
   const onBlurRef = useRef(onBlur);
 
   onChangeRef.current = onChange;
@@ -752,6 +947,7 @@ export function LiveMarkdownEditor({
   notesRef.current = notes || [];
   onWikilinkActivateRef.current = onWikilinkActivate;
   isResolvedTargetRef.current = isResolvedTarget;
+  getNoteContentRef.current = getNoteContent;
   onBlurRef.current = onBlur;
 
   // Mount EditorView once.
@@ -794,7 +990,8 @@ export function LiveMarkdownEditor({
         EditorView.lineWrapping,
         markdown({ base: markdownLanguage, addKeymap: true }),
         syntaxHighlighting(beebotMarkdownHighlight),
-        livePreview,
+        makeLivePreview({ notesRef, onWikilinkActivateRef, isResolvedTargetRef, getNoteContentRef }),
+        makeBlockField({ notesRef, onWikilinkActivateRef, isResolvedTargetRef, getNoteContentRef }),
         makeWikilinkPlugin(notesRef, isResolvedTargetRef, onWikilinkActivateRef),
         autocompletion({
           override: [makeWikilinkCompletions(notesRef), makeSlashCompletions()],

@@ -6,7 +6,7 @@ import remarkDirective from "remark-directive";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Copy, CheckCircle as Check, Document as FileText, MagicStick3 as Sparkles, InfoCircle as Info, DangerTriangle as AlertTriangle, CheckCircle as CheckCircle2 } from "@solar-icons/react";
-import { Brain, Bot } from "lucide-react";
+import { Brain, Bot, Folder, File, FolderTree } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAttachment } from "@/repositories/local/attachmentStore";
 import { DataviewQueryCard, type NoteItem } from "@/components/editor/DataviewQueryCard";
@@ -125,21 +125,53 @@ function splitFrontmatter(content: string): { fm: string | null; body: string } 
   return { fm: m[1], body: m[2] };
 }
 
-// ── Metadata card (Codex-style key/value table) ────────────────────────────
+// ── Notion-Style Property Header Pills & YAML Text (Pillar 4) ─────────────
 function MetadataCard({ entries }: { entries: Array<{ key: string; value: string }> }) {
+  const getBadgeStyle = (k: string, v: string) => {
+    const val = v.toLowerCase();
+    if (k === "status") {
+      if (val === "done" || val === "completed") return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+      if (val === "in progress" || val === "active") return "bg-sky-500/15 text-sky-400 border-sky-500/30";
+      if (val === "blocked") return "bg-rose-500/15 text-rose-400 border-rose-500/30";
+      return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+    }
+    if (k === "priority") {
+      if (val === "urgent" || val === "high") return "bg-rose-500/15 text-rose-400 border-rose-500/30 font-bold";
+      if (val === "medium") return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+      return "bg-sky-500/15 text-sky-400 border-sky-500/30";
+    }
+    return "bg-[var(--bb-bg-3)] text-[var(--bb-text-2)] border-[var(--bb-border)]";
+  };
+
   return (
-    <div className="not-prose mb-8 overflow-hidden rounded-2xl border border-[var(--bb-border)] bg-[var(--bb-bg-2)]">
-      <div className="px-5 py-2.5 border-b border-[var(--bb-border)] text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--bb-text-4)]">
-        Metadata
+    <div className="not-prose mb-8 rounded-2xl border border-[var(--bb-border)] bg-[var(--bb-bg-0)] p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between border-b border-[var(--bb-border)] pb-2.5 text-xs font-semibold text-[var(--bb-text-3)]">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-[var(--beebot-accent,#f4d35e)]" />
+          <span>Note Properties</span>
+        </div>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--bb-text-4)]">YAML / AI Readable</span>
       </div>
-      <dl className="grid grid-cols-[minmax(120px,auto)_1fr] gap-x-6 gap-y-2 px-5 py-4 font-mono text-[13px] leading-6">
-        {entries.map(({ key, value }) => (
-          <div key={key} className="contents">
-            <dt className="text-[var(--bb-text-3)]">{key}</dt>
-            <dd className="text-[var(--bb-text-1)] whitespace-pre-wrap break-words">{value}</dd>
-          </div>
-        ))}
-      </dl>
+
+      {/* Notion-Style Visual Pills */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        {entries.map(({ key, value }) => {
+          const k = key.toLowerCase();
+          const isPill = k === "status" || k === "priority" || k === "type" || k === "project" || k === "due";
+          return (
+            <div key={key} className="flex items-center gap-1.5 rounded-lg border border-[var(--bb-border)] bg-[var(--bb-bg-1)] px-2.5 py-1 text-xs">
+              <span className="font-mono text-[11px] text-[var(--bb-text-3)] uppercase tracking-wider">{key}:</span>
+              {isPill ? (
+                <span className={cn("rounded-md border px-2 py-0.5 font-medium capitalize", getBadgeStyle(k, value))}>
+                  {value}
+                </span>
+              ) : (
+                <span className="font-medium text-[var(--bb-text-1)]">{value}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -173,7 +205,7 @@ function CodeBlock({ language, children }: { language?: string; children: string
   }, [children, language]);
 
   return (
-    <div className="not-prose group relative my-[1.05em] overflow-hidden rounded-[14px] border border-[#262628] bg-[#161618]">
+    <div className="not-prose group relative my-[1.05em] min-w-0 max-w-full overflow-hidden rounded-[14px] border border-[#262628] bg-[#161618]">
       <div className="flex items-center justify-between border-b border-[#262628] px-4 py-1.5">
         <span className="text-[11px] font-medium uppercase tracking-wide text-[#7a7a7c]">{language || "text"}</span>
         <button
@@ -221,17 +253,63 @@ function MermaidBlock({ code }: { code: string }) {
   }, [code]);
   if (error) {
     return (
-      <div className="not-prose my-5 overflow-hidden rounded-xl border border-[var(--bb-border-strong)] bg-[var(--bb-bg-2)] p-4">
+      <div className="not-prose my-5 min-w-0 max-w-full overflow-hidden rounded-xl border border-[var(--bb-border-strong)] bg-[var(--bb-bg-2)] p-4">
         <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--bb-text-4)]">Mermaid (syntax error)</div>
         <pre className="overflow-x-auto font-mono text-[13px] text-[var(--bb-text-2)]"><code>{code}</code></pre>
       </div>
     );
   }
   return (
-    <div className="not-prose my-5 flex justify-center overflow-x-auto rounded-xl border border-[var(--bb-border)] bg-[var(--bb-bg-2)] p-4">
+    <div className="not-prose my-5 flex min-w-0 max-w-full justify-center overflow-x-auto rounded-xl border border-[var(--bb-border)] bg-[var(--bb-bg-2)] p-4">
       {svg ? <div className="bb-mermaid max-w-full [&_svg]:max-w-full [&_svg]:h-auto" dangerouslySetInnerHTML={{ __html: svg }} /> : (
         <div className="py-6 text-[11px] text-[var(--bb-text-4)]">Loading diagram…</div>
       )}
+    </div>
+  );
+}
+
+// ── Visual File Tree / Folder Structure Block (Pillar 4 / Ponytail) ────────
+function FileTreeBlock({ code }: { code: string }) {
+  const lines = code.trim().split(/\r?\n/).filter(Boolean);
+  return (
+    <div className="not-prose my-4 min-w-0 max-w-full overflow-x-auto rounded-2xl border border-[var(--bb-border)] bg-[var(--bb-bg-0)] p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between border-b border-[var(--bb-border)] pb-2.5 text-xs font-semibold text-[var(--bb-text-3)]">
+        <div className="flex items-center gap-2">
+          <FolderTree className="h-4 w-4 text-[var(--beebot-accent,#f4d35e)]" />
+          <span>Directory Structure</span>
+        </div>
+        <span className="rounded bg-[var(--bb-bg-2)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[var(--bb-text-4)] border border-[var(--bb-border)]">File Tree</span>
+      </div>
+      <div className="space-y-1.5 font-mono text-xs">
+        {lines.map((line, idx) => {
+          const match = line.match(/^([│├└─\s]*)(.*)$/);
+          const prefix = match ? match[1] : "";
+          const content = match ? match[2].trim() : line.trim();
+          const descMatch = content.match(/^([^\s(]+)\s*\(([^)]+)\).*$/);
+          const name = descMatch ? descMatch[1] : content;
+          const desc = descMatch ? descMatch[2] : "";
+          const isFolder = name.endsWith("/") || (!name.includes(".") && !descMatch && idx === 0);
+
+          return (
+            <div key={idx} className="flex items-center gap-2 text-[var(--bb-text-1)] hover:bg-[var(--bb-bg-1)] px-2 py-1 rounded-lg transition-colors">
+              <span className="text-[var(--bb-text-4)] select-none whitespace-pre">{prefix}</span>
+              {isFolder ? (
+                <Folder className="h-3.5 w-3.5 text-amber-400 shrink-0 fill-amber-400/20" />
+              ) : (
+                <File className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+              )}
+              <span className={cn("font-medium", isFolder ? "text-amber-300 font-semibold" : "text-[var(--bb-text-1)]")}>
+                {name}
+              </span>
+              {desc && (
+                <span className="ml-2 rounded bg-[var(--bb-bg-2)] px-1.5 py-0.5 text-[10px] font-sans text-[var(--bb-text-3)] border border-[var(--bb-border)]">
+                  {desc}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -372,10 +450,16 @@ function remarkDirectiveToHtml() {
 const EMBED_LINE = /^!\[\[([^[\]\r\n]+)\]\]\s*$/gm;
 
 function preprocessEmbeds(body: string): string {
-  return body.replace(EMBED_LINE, (_m, spec) => {
+  let res = body.replace(EMBED_LINE, (_m, spec) => {
     // remark-directive labels can't contain `]`, but `#` and `|` are fine.
     return `:::embed[${spec.trim()}]\n:::`;
   });
+  // ponytail: replace 3+ consecutive newlines (\n\n\n+) with proper independent spacer paragraphs (\n\n&nbsp;\n\n) so skipped lines never get deleted or merged!
+  res = res.replace(/\n{3,}/g, (match) => {
+    const extraLines = match.length - 2;
+    return "\n\n" + "&nbsp;\n\n".repeat(extraLines);
+  });
+  return res;
 }
 
 // Extract just the heading-anchored section from a full note body.
@@ -569,17 +653,17 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
 
   const components: Components = useMemo(() => ({
     h1: ({ children, ...props }) => (
-      <h1 {...props} className="mt-2 mb-[14px] text-[33px] font-[720] leading-[1.12] tracking-[-0.028em] text-[var(--bb-text-1)]">
+      <h1 {...props} className="mt-[1em] mb-[0.4em] text-[1.8em] font-[700] leading-[1.3] text-[var(--bb-text-1)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </h1>
     ),
     h2: ({ children, ...props }) => (
-      <h2 {...props} className="mt-[1.6em] mb-[0.45em] text-[1.4em] font-[680] leading-[1.3] tracking-[-0.018em] text-[var(--bb-text-1)]">
+      <h2 {...props} className="mt-[1em] mb-[0.4em] text-[1.5em] font-[700] leading-[1.3] text-[var(--bb-text-1)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </h2>
     ),
     h3: ({ children, ...props }) => (
-      <h3 {...props} className="mt-[1.25em] mb-[0.4em] text-[1.14em] font-[680] leading-[1.3] tracking-[-0.012em] text-[var(--bb-text-1)]">
+      <h3 {...props} className="mt-[1em] mb-[0.4em] text-[1.3em] font-[700] leading-[1.3] text-[var(--bb-text-1)]">
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </h3>
     ),
@@ -615,7 +699,7 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
       <em {...props} className="italic text-[var(--bb-text-1)]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</em>
     ),
     del: ({ children, ...props }) => (
-      <del {...props} className="line-through text-[var(--bb-text-3)]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</del>
+      <del {...props} className="line-through text-[#6a6a6c]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</del>
     ),
     mark: ({ children, ...props }) => (
       <mark {...props} className="bg-[rgba(255,225,120,0.26)] rounded-[4px] px-[0.16em] py-0 text-inherit">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</mark>
@@ -661,9 +745,11 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
         </blockquote>
       );
     },
-    hr: () => <hr className="my-[14px] border-0 border-t border-[#262628]" />,
+    hr: () => <hr className="my-[1em] border-0 border-t border-[#262628]" />,
     code: ({ children, className: codeClass, ...props }: { children?: ReactNode; className?: string; node?: unknown }) => {
-      const isInline = !codeClass || !codeClass.includes("language-");
+      const rawText = typeof children === "string" ? children : Array.isArray(children) && children.every((c) => typeof c === "string") ? children.join("") : String(children || "");
+      const isMultiLineOrTree = rawText.includes("\n") || rawText.includes("├──") || rawText.includes("└──") || rawText.includes("│   ") || rawText.includes("+--") || rawText.includes("|--");
+      const isInline = (!codeClass || !codeClass.includes("language-")) && !isMultiLineOrTree;
       if (isInline) {
         // Auto-decorate hex colors with a tiny swatch (Codex signature look).
         const text = typeof children === "string" ? children : Array.isArray(children) && children.every((c) => typeof c === "string") ? children.join("") : null;
@@ -675,15 +761,18 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
         );
       }
       const language = codeClass?.replace(/^language-/, "") || "text";
-      const text = String(children).replace(/\n$/, "");
+      const text = rawText.replace(/\n$/, "");
       // Fenced ```mermaid blocks render as live SVG diagrams instead of code.
       if (language === "mermaid") return <MermaidBlock code={text} />;
       if (language === "query" || language === "dataview") return <DataviewQueryCard code={text} notes={notes} onOpenNote={onWikilinkActivate} />;
+      if (language === "tree" || language === "folder" || language === "dir" || language === "filetree" || ((language === "text" || !language || language === "ascii") && isMultiLineOrTree && (text.includes("├──") || text.includes("└──") || text.includes("│   ") || text.includes("+--") || text.includes("|--")))) {
+        return <FileTreeBlock code={text} />;
+      }
       return <CodeBlock language={language}>{text}</CodeBlock>;
     },
     pre: ({ children }) => <>{children}</>, // CodeBlock already provides <pre>
     table: ({ children, ...props }) => (
-      <div className="not-prose my-6 overflow-x-auto">
+      <div className="not-prose my-[0.7em] min-w-0 max-w-full overflow-x-auto">
         <table {...props} className="w-full border-collapse text-[14px]">{children}</table>
       </div>
     ),
@@ -740,7 +829,7 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
   }), [onWikilinkActivate, isResolvedTarget, getNoteContent, notes, _depth]);
 
   return (
-    <article className={cn("mx-auto max-w-3xl px-2 py-6 text-[var(--bb-text-1)]", className)}>
+    <article className={cn("mx-auto max-w-3xl min-w-0 max-w-full break-words px-2 py-6 text-[var(--bb-text-1)]", className)}>
       {metadata && metadata.length > 0 && <MetadataCard entries={metadata} />}
       <ReactMarkdown
         remarkPlugins={[remarkFrontmatter, remarkGfm, remarkDirective, remarkDirectiveToHtml, remarkMath]}
