@@ -723,20 +723,38 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
       const { type, cleanedChildren } = extractCalloutInfo(children);
       const t = type ? type.toLowerCase() : null;
       const icon = t === "note" || t === "info" ? "📝" :
-                   t === "tip" || t === "hint" ? "💡" :
-                   t === "warning" || t === "caution" ? "⚠️" :
-                   t === "important" || t === "danger" ? "🚨" :
+                   t === "tip" || t === "hint" || t === "suggestion" ? "💡" :
+                   t === "warning" || t === "caution" || t === "attention" ? "⚠️" :
+                   t === "important" || t === "danger" || t === "error" || t === "bug" ? "🚨" :
+                   t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "✅" :
+                   t === "question" || t === "help" ? "❓" :
                    t === "quote" || t === "cite" ? "💬" : "✨";
       const title = t === "insight" ? "Insight" :
-                    t === "note" ? "Note" :
-                    t === "tip" ? "Tip" :
-                    t === "warning" ? "Warning" :
-                    t === "important" ? "Important" :
+                    t === "note" || t === "info" ? "Note" :
+                    t === "tip" || t === "hint" || t === "suggestion" ? "Tip" :
+                    t === "warning" || t === "caution" || t === "attention" ? "Warning" :
+                    t === "important" || t === "danger" || t === "error" || t === "bug" ? "Important" :
+                    t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "Pass" :
+                    t === "question" || t === "help" ? "Question" :
                     type ? type.charAt(0).toUpperCase() + type.slice(1).toLowerCase() : "";
+      const borderClass = t === "important" || t === "danger" || t === "error" || t === "bug" ? "border-l-[#ef4444] bg-[rgba(239,68,68,0.08)]" :
+                          t === "tip" || t === "hint" || t === "suggestion" ? "border-l-[#10b981] bg-[rgba(16,185,129,0.08)]" :
+                          t === "warning" || t === "caution" || t === "attention" ? "border-l-[#f59e0b] bg-[rgba(245,158,11,0.08)]" :
+                          t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "border-l-[#22c55e] bg-[rgba(34,197,94,0.08)]" :
+                          t === "note" || t === "info" ? "border-l-[#0ea5e9] bg-[rgba(14,165,233,0.08)]" :
+                          t === "question" || t === "help" ? "border-l-[#a855f7] bg-[rgba(168,85,247,0.08)]" :
+                          "border-l-[var(--beebot-accent,#f4d35e)] bg-[color-mix(in_oklab,var(--beebot-accent,#f4d35e)_5%,transparent)]";
+      const titleColorClass = t === "important" || t === "danger" || t === "error" || t === "bug" ? "text-[#ef4444]" :
+                              t === "tip" || t === "hint" || t === "suggestion" ? "text-[#10b981]" :
+                              t === "warning" || t === "caution" || t === "attention" ? "text-[#f59e0b]" :
+                              t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "text-[#22c55e]" :
+                              t === "note" || t === "info" ? "text-[#0ea5e9]" :
+                              t === "question" || t === "help" ? "text-[#a855f7]" :
+                              "text-[var(--beebot-accent,#f4d35e)]";
       return (
-        <blockquote {...props} className="my-[1.2em] rounded-[14px] border border-[#242426] border-l-[3px] border-l-[var(--beebot-accent,#f4d35e)] bg-[color-mix(in_oklab,var(--beebot-accent,#f4d35e)_5%,transparent)] py-[0.9em] px-[1.1em] text-[#c4c4c6] text-[14px] not-italic leading-[1.68]">
+        <blockquote {...props} className={`my-[1.2em] rounded-[14px] border border-[#242426] border-l-[3px] py-[0.9em] px-[1.1em] text-[#c4c4c6] text-[14px] not-italic leading-[1.68] ${borderClass}`}>
           {type && (
-            <div className="font-semibold text-[var(--beebot-accent,#f4d35e)] text-[13px] mb-[4px] flex items-center gap-[6px] select-none">
+            <div className={`font-semibold text-[13px] mb-[4px] flex items-center gap-[6px] select-none ${titleColorClass}`}>
               <span>{icon}</span>
               <span>{title}</span>
             </div>

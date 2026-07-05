@@ -175,17 +175,35 @@ class CalloutHeaderWidget extends WidgetType {
     div.className = "cm-callout-header";
     const t = this.type.toLowerCase();
     const icon = t === "note" || t === "info" ? "📝" :
-                 t === "tip" || t === "hint" ? "💡" :
-                 t === "warning" || t === "caution" ? "⚠️" :
-                 t === "important" || t === "danger" ? "🚨" :
+                 t === "tip" || t === "hint" || t === "suggestion" ? "💡" :
+                 t === "warning" || t === "caution" || t === "attention" ? "⚠️" :
+                 t === "important" || t === "danger" || t === "error" || t === "bug" ? "🚨" :
+                 t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "✅" :
+                 t === "question" || t === "help" ? "❓" :
                  t === "quote" || t === "cite" ? "💬" : "✨";
     const title = t === "insight" ? "Insight" :
-                  t === "note" ? "Note" :
-                  t === "tip" ? "Tip" :
-                  t === "warning" ? "Warning" :
-                  t === "important" ? "Important" :
+                  t === "note" || t === "info" ? "Note" :
+                  t === "tip" || t === "hint" || t === "suggestion" ? "Tip" :
+                  t === "warning" || t === "caution" || t === "attention" ? "Warning" :
+                  t === "important" || t === "danger" || t === "error" || t === "bug" ? "Important" :
+                  t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "Pass" :
+                  t === "question" || t === "help" ? "Question" :
                   this.type.charAt(0).toUpperCase() + this.type.slice(1).toLowerCase();
-    div.innerHTML = `<span style="margin-right: 6px;">${icon}</span><span>${title}</span>`;
+    const color = t === "important" || t === "danger" || t === "error" || t === "bug" ? "#ef4444" :
+                  t === "tip" || t === "hint" || t === "suggestion" ? "#10b981" :
+                  t === "warning" || t === "caution" || t === "attention" ? "#f59e0b" :
+                  t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "#22c55e" :
+                  t === "note" || t === "info" ? "#0ea5e9" :
+                  t === "question" || t === "help" ? "#a855f7" :
+                  "var(--beebot-accent, #f4d35e)";
+    div.style.color = color;
+    div.style.fontWeight = "700";
+    div.style.fontSize = "13.5px";
+    div.style.display = "flex";
+    div.style.alignItems = "center";
+    div.style.gap = "6px";
+    div.style.marginBottom = "4px";
+    div.innerHTML = `<span>${icon}</span><span>${title}</span>`;
     return div;
   }
 }
@@ -404,14 +422,45 @@ function buildLivePreviewDecorations(view: EditorView, richRefs: RichRefs): Deco
     });
   }
   const quoteLineNumbers = new Set(quoteLineStarts.map((pos) => view.state.doc.lineAt(pos).number));
+  const lineCalloutType = new Map<number, string>();
+  {
+    const doc = view.state.doc;
+    let currentType: string | null = null;
+    for (let ln = 1; ln <= doc.lines; ln += 1) {
+      if (quoteLineNumbers.has(ln)) {
+        const text = doc.line(ln).text.trim();
+        const m = /^>\s*\[!([a-zA-Z0-9_-]+)\]/.exec(text);
+        if (m) {
+          currentType = m[1].toLowerCase();
+        }
+        if (currentType) {
+          lineCalloutType.set(ln, currentType);
+        }
+      } else {
+        currentType = null;
+      }
+    }
+  }
   const quoteDecos = quoteLineStarts.map((pos) => {
     const lineNum = view.state.doc.lineAt(pos).number;
     const hasPrev = quoteLineNumbers.has(lineNum - 1);
     const hasNext = quoteLineNumbers.has(lineNum + 1);
-    if (!hasPrev && !hasNext) return quoteLineSingleDeco.range(pos);
-    if (!hasPrev && hasNext) return quoteLineFirstDeco.range(pos);
-    if (hasPrev && hasNext) return quoteLineMiddleDeco.range(pos);
-    return quoteLineLastDeco.range(pos);
+    const cType = lineCalloutType.get(lineNum);
+    let cls = "cm-quoteline";
+    if (!hasPrev && !hasNext) cls += " cm-quote-single";
+    else if (!hasPrev && hasNext) cls += " cm-quote-first";
+    else if (hasPrev && hasNext) cls += " cm-quote-middle";
+    else cls += " cm-quote-last";
+    if (cType) {
+      if (cType === "important" || cType === "danger" || cType === "error" || cType === "bug") cls += " cm-callout-red";
+      else if (cType === "tip" || cType === "hint" || cType === "suggestion") cls += " cm-callout-green";
+      else if (cType === "warning" || cType === "caution" || cType === "attention") cls += " cm-callout-yellow";
+      else if (cType === "pass" || cType === "success" || cType === "done" || cType === "check" || cType === "ok") cls += " cm-callout-emerald";
+      else if (cType === "note" || cType === "info") cls += " cm-callout-blue";
+      else if (cType === "question" || cType === "help") cls += " cm-callout-purple";
+      else cls += " cm-callout-default";
+    }
+    return Decoration.line({ class: cls }).range(pos);
   });
   // Line decorations (quote bars) + the mark/widget decorations, sorted by CodeMirror.
   const ranges = [
@@ -745,7 +794,14 @@ const beebotTheme = EditorView.theme({
   ".cm-quote-first": { borderTopLeftRadius: "14px", borderTopRightRadius: "14px", borderBottomLeftRadius: "0", borderBottomRightRadius: "0", borderBottom: "none", marginTop: "4px", marginBottom: "0", paddingBottom: "0.25em" },
   ".cm-quote-middle": { borderRadius: "0", borderTop: "none", borderBottom: "none", margin: "0", paddingTop: "0.25em", paddingBottom: "0.25em" },
   ".cm-quote-last": { borderBottomLeftRadius: "14px", borderBottomRightRadius: "14px", borderTopLeftRadius: "0", borderTopRightRadius: "0", borderTop: "none", marginTop: "0", marginBottom: "4px", paddingTop: "0.25em" },
-  ".cm-callout-header": { fontWeight: "600", color: "var(--beebot-accent, #f4d35e)", fontSize: "13px", marginBottom: "4px", display: "flex", alignItems: "center" },
+  ".cm-callout-header": { fontWeight: "600", fontSize: "13px", marginBottom: "4px", display: "flex", alignItems: "center" },
+  ".cm-callout-red": { borderLeft: "3px solid #ef4444 !important", background: "rgba(239, 68, 68, 0.08) !important" },
+  ".cm-callout-green": { borderLeft: "3px solid #10b981 !important", background: "rgba(16, 185, 129, 0.08) !important" },
+  ".cm-callout-yellow": { borderLeft: "3px solid #f59e0b !important", background: "rgba(245, 158, 11, 0.08) !important" },
+  ".cm-callout-emerald": { borderLeft: "3px solid #22c55e !important", background: "rgba(34, 197, 94, 0.08) !important" },
+  ".cm-callout-blue": { borderLeft: "3px solid #0ea5e9 !important", background: "rgba(14, 165, 233, 0.08) !important" },
+  ".cm-callout-purple": { borderLeft: "3px solid #a855f7 !important", background: "rgba(168, 85, 247, 0.08) !important" },
+  ".cm-callout-default": { borderLeft: "3px solid var(--beebot-accent, #f4d35e) !important", background: "rgba(244, 211, 94, 0.08) !important" },
   ".cm-inline-title": { fontSize: "33px", fontWeight: "720", letterSpacing: "-0.028em", color: "#f4f4f4", lineHeight: "1.12", marginBottom: "14px" },
   ".cm-hr": { display: "inline-block", width: "100%", borderTop: "1px solid #262628", verticalAlign: "middle", opacity: "1", margin: "14px 0" },
   ".cm-inline-image": { display: "block", maxWidth: "100%", maxHeight: "360px", height: "auto", borderRadius: "8px", margin: "4px 0", border: "1px solid var(--bb-border)" },
