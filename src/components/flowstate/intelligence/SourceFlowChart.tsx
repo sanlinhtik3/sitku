@@ -1,14 +1,12 @@
-// Source Flow — diverging stacked chart of daily cashflow by SOURCE.
-//   income sub-sources stack above 0, expense categories below 0.
-// Toggle Area ↔ Line. Today (single-day range) falls back to horizontal bars
-// since a 1-point line/area is meaningless. Brand-aware colors + rich tooltip.
+// Source Flow — daily cashflow by SOURCE.
+// Today (single-day range) falls back to horizontal bars since a 1-point line is
+// meaningless. Brand-aware colors + rich tooltip.
 
-import { useState } from "react";
 import {
-  ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
+  ResponsiveContainer, ComposedChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { Card } from "@/components/ui/card";
-import { AreaChart as AreaIcon, LineChart as LineIcon, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight } from "@/components/flowstate/solarIcons";
 import { cn } from "@/lib/utils";
 import type { SourceFlow, FlowSeries } from "@/hooks/useFlowStateSourceFlow";
 
@@ -21,8 +19,6 @@ const money = (n: number, cur: string) => {
   const suffix = cur === "MMK" ? " Ks" : "";
   return `${n < 0 ? "−" : ""}${sym}${s}${suffix}`;
 };
-
-type Mode = "area" | "line";
 
 interface Props {
   data: SourceFlow | undefined;
@@ -101,7 +97,6 @@ function TodayBars({ data, currency }: { data: SourceFlow; currency: string }) {
 }
 
 export function SourceFlowChart({ data, currency, periodLabel }: Props) {
-  const [mode, setMode] = useState<Mode>("area");
   const series = data?.series ?? [];
   const rows = data?.rows ?? [];
   const hasData = series.length > 0 && rows.some((r) => series.some((s) => Number(r[s.key]) !== 0));
@@ -118,23 +113,6 @@ export function SourceFlowChart({ data, currency, periodLabel }: Props) {
             <div className="hidden sm:flex items-center gap-3 text-[11px]">
               <span className="flex items-center gap-1 text-emerald-300"><ArrowUpRight className="h-3 w-3" />{money(data.totals.income, currency)}</span>
               <span className="flex items-center gap-1 text-rose-300"><ArrowDownRight className="h-3 w-3" />{money(data.totals.expense, currency)}</span>
-            </div>
-          )}
-          {!data?.isSingleDay && (
-            <div className="flex items-center bb-glass-control rounded-lg p-0.5">
-              {([["area", AreaIcon], ["line", LineIcon]] as const).map(([m, Icon]) => (
-                <button
-                  key={m}
-                  onClick={() => setMode(m)}
-                  className={cn(
-                    "h-6 w-7 rounded-md flex items-center justify-center transition-colors",
-                    mode === m ? "bg-[var(--bb-accent-soft)] text-[var(--beebot-accent)]" : "text-muted-foreground hover:text-foreground",
-                  )}
-                  title={m === "area" ? "Stacked area" : "Lines"}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </button>
-              ))}
             </div>
           )}
         </div>
@@ -155,13 +133,9 @@ export function SourceFlowChart({ data, currency, periodLabel }: Props) {
               <YAxis stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} width={42} tickFormatter={(v) => money(Number(v), currency)} />
               <ReferenceLine y={0} stroke="hsl(var(--border) / 0.5)" />
               <Tooltip content={<FlowTooltip series={series} currency={currency} />} />
-              {mode === "area"
-                ? series.map((s) => (
-                    <Area key={s.key} type="monotone" dataKey={s.key} stackId="flow" stroke={s.color} fill={s.color} fillOpacity={0.55} strokeWidth={1} isAnimationActive={false} />
-                  ))
-                : series.map((s) => (
-                    <Line key={s.key} type="monotone" dataKey={s.key} stroke={s.color} strokeWidth={2} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
-                  ))}
+              {series.map((s) => (
+                <Line key={s.key} type="monotone" dataKey={s.key} stroke={s.color} strokeWidth={2} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
+              ))}
             </ComposedChart>
           </ResponsiveContainer>
         </div>

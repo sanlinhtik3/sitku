@@ -1,14 +1,16 @@
 // ── Unified data backup / restore ───────────────────────────────────────────
 // The realistic safety net against browser eviction (see storageDurability): a
 // single JSON file the user can save OUTSIDE browser storage and re-import on any
-// device. Covers the three local stores — notes, FlowState finance, and the Agent
-// Consultant. Read-only export is always safe; import is guarded + validated.
+// device. Covers notes, FlowState finance, Agent Consultant, and E.V conversation
+// memory. Read-only export is always safe; import is guarded + validated.
 
 import { noteStore, type NoteRecord } from "@/repositories/local/noteStore";
 import { financeStore } from "@/repositories/local/financeStore";
 import { consultantStore } from "@/repositories/local/consultantStore";
+import { exportEvMemoryBackup, importEvMemoryBackup } from "@/features/ev-voice/memory/memoryService";
+import type { EvMemoryBackupEnvelope } from "@/features/ev-voice/memory/contracts";
 
-const BACKUP_VERSION = 1;
+const BACKUP_VERSION = 2;
 
 export interface BeebotBackup {
   app: "beebot";
@@ -17,12 +19,14 @@ export interface BeebotBackup {
   notes: { notes: [string, NoteRecord][]; folders: string[] };
   finance: Awaited<ReturnType<typeof financeStore.exportRaw>>;
   consultant: Awaited<ReturnType<typeof consultantStore.exportRaw>>;
+  evMemory?: EvMemoryBackupEnvelope;
 }
 
 export interface BackupSummary {
   notes: number; folders: number;
   transactions: number; accounts: number;
   posts: number; revenue: number;
+  evSessions: number; evMessages: number; evSummaries: number; evMemories: number;
 }
 
 function summarize(b: BeebotBackup): BackupSummary {
@@ -33,6 +37,10 @@ function summarize(b: BeebotBackup): BackupSummary {
     accounts: b.finance?.accounts?.length ?? 0,
     posts: b.consultant?.posts?.length ?? 0,
     revenue: b.consultant?.revenue?.length ?? 0,
+    evSessions: b.evMemory?.data.sessions.length ?? 0,
+    evMessages: b.evMemory?.data.messages.length ?? 0,
+    evSummaries: b.evMemory?.data.summaries.length ?? 0,
+    evMemories: b.evMemory?.data.memories.length ?? 0,
   };
 }
 
@@ -41,10 +49,11 @@ export async function buildBackup(): Promise<BeebotBackup> {
   await Promise.all([noteStore.ready(), financeStore.ready(), consultantStore.ready()]);
   // NOTE: noteStore.allNotes() returns meta only (1M-note RAM discipline). To
   // include content in the backup we read full records directly from disk.
-  const [noteRecords, finance, consultant] = await Promise.all([
+  const [noteRecords, finance, consultant, evMemory] = await Promise.all([
     noteStore.getAllRecords(),
     financeStore.exportRaw(),
     consultantStore.exportRaw(),
+    exportEvMemoryBackup(),
   ]);
   return {
     app: "beebot",
@@ -53,6 +62,7 @@ export async function buildBackup(): Promise<BeebotBackup> {
     notes: { notes: noteRecords, folders: noteStore.folders() },
     finance,
     consultant,
+    evMemory,
   };
 }
 
@@ -94,8 +104,8 @@ export async function readBackupFile(file: File): Promise<BeebotBackup> {
 }
 
 /**
- * Restore from a validated backup, REPLACING current local data. Each store does a
- * guarded reconcile (id-preserving), so re-running is idempotent. Returns a summary.
+ * Restore from a validated backup. Domain stores use their guarded reconcile
+ * strategy; E.V memory is append-only and merge-only, so re-running is idempotent.
  */
 export async function importBackup(backup: BeebotBackup): Promise<BackupSummary> {
   if (backup.notes) {
@@ -103,5 +113,6 @@ export async function importBackup(backup: BeebotBackup): Promise<BackupSummary>
   }
   if (backup.finance) await financeStore.importRaw(backup.finance);
   if (backup.consultant) await consultantStore.importRaw(backup.consultant);
+  if (backup.evMemory) await importEvMemoryBackup(backup.evMemory);
   return summarize(backup);
 }

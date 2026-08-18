@@ -1,6 +1,8 @@
 import { memo, useMemo } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { cn } from "@/lib/utils";
+import { CategoryIcon } from "@/components/flowstate/CategoryIcon";
+import { FuiBadge, FuiWidget } from "@/design-system/fui";
 
 interface CategoryData {
   category: string;
@@ -18,34 +20,11 @@ interface SpendingDonutChartProps {
   compact?: boolean;
 }
 
-const RADIAN = Math.PI / 180;
-
-const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
-  if (percent < 0.05) return null; // Don't show label for small slices
-  
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * RADIAN);
-
-  return (
-    <text
-      x={x}
-      y={y}
-      fill="white"
-      textAnchor="middle"
-      dominantBaseline="central"
-      className="text-[10px] font-medium"
-    >
-      {`${(percent * 100).toFixed(0)}%`}
-    </text>
-  );
-};
-
 const CustomTooltip = ({ active, payload, currency }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="bg-popover/95 backdrop-blur-md border border-border/50 rounded-lg p-3 shadow-xl">
+      <div className="flowstate-chart-tooltip">
         <p className="font-medium text-sm">{data.category}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
           {currency} {data.amount.toLocaleString()} ({data.percentage.toFixed(1)}%)
@@ -59,7 +38,7 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
 export const SpendingDonutChart = memo(({ data, currency = "Ks", compact = false }: SpendingDonutChartProps) => {
   const chartData = useMemo(() => {
     if (data.length === 0) {
-      return [{ category: "No data", amount: 1, percentage: 100, color: "#374151" }];
+      return [{ category: "No data", amount: 1, percentage: 100, color: "var(--bb-bg-4)" }];
     }
     return data;
   }, [data]);
@@ -67,30 +46,36 @@ export const SpendingDonutChart = memo(({ data, currency = "Ks", compact = false
   const totalAmount = useMemo(() => 
     data.reduce((sum, item) => sum + item.amount, 0)
   , [data]);
+  const symbol = currency === "THB" ? "฿" : currency === "USD" ? "$" : currency === "MMK" ? "Ks" : currency;
+  const formattedTotal = totalAmount >= 1_000_000
+    ? `${symbol}${(totalAmount / 1_000_000).toFixed(1)}M`
+    : totalAmount >= 1_000
+      ? `${symbol}${(totalAmount / 1_000).toFixed(0)}K`
+      : `${symbol}${totalAmount.toLocaleString()}`;
+  const monthLabel = new Intl.DateTimeFormat(undefined, { month: "long" }).format(new Date());
 
   return (
-    <div className={cn(
-      "rounded-xl border border-border/50 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden",
-      compact ? "p-3" : "p-4"
-    )}>
-      <h3 className={cn("font-semibold text-foreground mb-3", compact ? "text-sm" : "text-base")}>
-        Spending by Category
-      </h3>
-
-      <div className="flex flex-col lg:flex-row items-center gap-4">
+    <FuiWidget
+      className={cn("flowstate-glass flowstate-spending-card", compact && "flowstate-widget-compact")}
+      eyebrow="Expense allocation"
+      title="Spending by category"
+      description={`${monthLabel} · category share`}
+      action={<FuiBadge tone={totalAmount > 0 ? "danger" : "offline"}>{formattedTotal} total</FuiBadge>}
+    >
+      <div className="flowstate-spending-body">
         {/* Chart */}
-        <div className={cn("w-full", compact ? "h-[140px]" : "h-[180px]", "lg:w-1/2")}>
+        <div className="flowstate-donut-wrap">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={chartData}
                 cx="50%"
                 cy="50%"
-                labelLine={false}
-                label={renderCustomizedLabel}
-                innerRadius={compact ? 35 : 45}
-                outerRadius={compact ? 60 : 75}
-                paddingAngle={2}
+                label={false}
+                innerRadius={46}
+                outerRadius={59}
+                paddingAngle={1.5}
+                cornerRadius={2}
                 dataKey="amount"
               >
                 {chartData.map((entry, index) => (
@@ -104,25 +89,25 @@ export const SpendingDonutChart = memo(({ data, currency = "Ks", compact = false
               <Tooltip content={<CustomTooltip currency={currency} />} />
             </PieChart>
           </ResponsiveContainer>
+          <div className="flowstate-donut-center"><strong>{formattedTotal}</strong><span>spent</span></div>
         </div>
 
         {/* Legend */}
-        <div className={cn(
-          "w-full lg:w-1/2 grid gap-1.5",
-          compact ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-1"
-        )}>
+        <div className="flowstate-spending-legend">
           {data.slice(0, compact ? 4 : 6).map((item, index) => (
-            <div key={index} className="flex items-center gap-2 text-sm">
-              <div 
-                className="w-2.5 h-2.5 rounded-full shrink-0" 
-                style={{ backgroundColor: item.color }}
-              />
-              <span className="text-muted-foreground truncate text-xs flex-1">
-                {item.category}
-              </span>
-              <span className="text-xs font-medium tabular-nums">
-                {item.percentage.toFixed(0)}%
-              </span>
+            <div key={index} className="flowstate-spending-row">
+              <div>
+                <CategoryIcon
+                  icon={item.icon}
+                  color={item.color}
+                  className="h-3.5 w-3.5"
+                  containerClassName="shrink-0"
+                />
+                <span>{item.category}</span>
+                <strong>{symbol}{item.amount.toLocaleString()}</strong>
+                <em>{item.percentage.toFixed(0)}%</em>
+              </div>
+              <div className="flowstate-category-track"><span style={{ width: `${item.percentage}%`, backgroundColor: item.color }} /></div>
             </div>
           ))}
           {data.length > (compact ? 4 : 6) && (
@@ -133,14 +118,7 @@ export const SpendingDonutChart = memo(({ data, currency = "Ks", compact = false
         </div>
       </div>
 
-      {/* Total */}
-      <div className="mt-3 pt-3 border-t border-border/30 flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Total Expenses</span>
-        <span className="font-semibold text-sm">
-          {currency} {totalAmount.toLocaleString()}
-        </span>
-      </div>
-    </div>
+    </FuiWidget>
   );
 });
 

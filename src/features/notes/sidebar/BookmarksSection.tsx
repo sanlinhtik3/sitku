@@ -28,7 +28,7 @@ export function BookmarksSection({ entries, onOpenNote, onRevealFolder, onToggle
       {bookmarksOpen && (
         <div className="mt-0.5 space-y-0.5 max-h-44 overflow-y-auto">
           {entries.map((entry) => (
-            <div key={entry.path} className="group flex items-center h-8 pl-2 pr-1 rounded-[9px] text-[12.5px] text-[#9b9b9d] hover:bg-[#1a1a1c] hover:text-[#ededed] transition-colors duration-[140ms]">
+            <div key={entry.path} className="group flex items-center h-8 pl-2 pr-1 rounded-[var(--bb-radius-control)] text-[12.5px] text-[#9b9b9d] hover:bg-[#1a1a1c] hover:text-[#ededed] transition-colors duration-[140ms]">
               <button
                 className="min-w-0 flex-1 flex items-center gap-1.5 text-left"
                 onClick={() => (entry.kind === "folder" ? onRevealFolder(entry.path) : onOpenNote(entry.path))}

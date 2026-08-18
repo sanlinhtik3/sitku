@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CreditCard, CalendarIcon, Loader2 } from "lucide-react";
+import { CreditCard, CalendarIcon, Loader2 } from "@/components/flowstate/solarIcons";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Subscription } from "@/hooks/useFlowState";
@@ -80,7 +80,7 @@ export function AddSubscriptionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-card/98 backdrop-blur-xl border-border/50 shadow-2xl">
+      <DialogContent className="flowstate-entry-dialog max-w-md">
         <DialogHeader className="pb-2">
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             <div className="p-2 rounded-xl bg-purple-500/15 text-purple-500">

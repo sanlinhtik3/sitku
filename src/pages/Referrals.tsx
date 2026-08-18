@@ -24,14 +24,6 @@ export default function Referrals() {
     },
   });
 
-  if (settingsLoading) {
-    return null;
-  }
-
-  if (!referralSettings?.is_enabled) {
-    return <Navigate to="/404" replace />;
-  }
-
   const { data: referralStats } = useQuery({
     queryKey: ["referral-stats", user?.id],
     queryFn: async () => {
@@ -68,8 +60,16 @@ export default function Referrals() {
         chartData: Object.values(dailyMap),
       };
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!referralSettings?.is_enabled,
   });
+
+  if (settingsLoading) {
+    return null;
+  }
+
+  if (!referralSettings?.is_enabled) {
+    return <Navigate to="/404" replace />;
+  }
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">

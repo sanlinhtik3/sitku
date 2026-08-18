@@ -1,9 +1,11 @@
 import React from "react";
 import { Check, Download, Palette, Plus, Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CustomTheme } from "@/lib/theme/themeEngine";
+import { isBuiltInThemeId, type CustomTheme } from "@/lib/theme/themeEngine";
+import { parseThemeJson } from "@/lib/theme/themeValidation";
 import { themeStore } from "@/repositories/local/themeStore";
 import { toast } from "sonner";
+import { FuiBadge, FuiPanel, FuiSectionHeader } from "@/design-system/fui";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -28,7 +30,7 @@ export function ThemeStorePanel({ currentThemeId, onThemeSelect, onEditTheme }: 
 
   React.useEffect(() => {
     setThemes(themeStore.getThemes());
-  }, []);
+  }, [currentThemeId]);
 
   const handleImport = () => {
     const input = document.createElement("input");
@@ -42,16 +44,14 @@ export function ThemeStorePanel({ currentThemeId, onThemeSelect, onEditTheme }: 
       reader.onload = (e) => {
         try {
           const content = e.target?.result as string;
-          const theme = JSON.parse(content) as CustomTheme;
-          if (!theme.id || !theme.colors) throw new Error("Invalid theme format");
-          
-          themeStore.saveTheme(theme);
+          const theme = themeStore.importTheme(parseThemeJson(content));
           setThemes(themeStore.getThemes());
-          toast.success(`Theme "${theme.name}" imported successfully`);
+          toast.success(`Theme "${theme.name}" imported. Review it, then Apply.`);
         } catch (error) {
-          toast.error("Failed to import theme file");
+          toast.error(error instanceof Error ? error.message : "Failed to import theme file");
         }
       };
+      reader.onerror = () => toast.error("Theme file could not be read.");
       reader.readAsText(file);
     };
     input.click();
@@ -62,8 +62,10 @@ export function ThemeStorePanel({ currentThemeId, onThemeSelect, onEditTheme }: 
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${theme.id}.json`;
+    a.download = `${theme.name.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase() || "sitku-theme"}.json`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(url);
     toast.success(`Theme exported`);
   };
@@ -71,37 +73,37 @@ export function ThemeStorePanel({ currentThemeId, onThemeSelect, onEditTheme }: 
   const confirmDelete = () => {
     if (!pendingDelete) return;
     const { id, name } = pendingDelete;
-    themeStore.deleteTheme(id);
-    setThemes(themeStore.getThemes());
-    if (currentThemeId === id) {
-      onThemeSelect(null); // fall back to the pristine System Default
+    try {
+      themeStore.deleteTheme(id);
+      setThemes(themeStore.getThemes());
+      if (currentThemeId === id) onThemeSelect(null);
+      toast.success(`Theme "${name}" uninstalled`);
+      setPendingDelete(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Theme could not be removed.");
     }
-    toast.success(`Theme "${name}" uninstalled`);
-    setPendingDelete(null);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-medium">Custom Themes</h3>
-          <p className="text-xs text-[var(--bb-text-2)]">Apply, customize, or import JSON themes.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleImport} className="h-8">
-            <Upload className="mr-2 h-3.5 w-3.5" /> Import
+    <div className="space-y-4" data-testid="theme-store">
+      <FuiSectionHeader
+        title="Custom Themes"
+        description="One palette updates the workspace, editor, dashboards, dialogs, and charts."
+        action={<div className="grid grid-cols-2 gap-2 sm:flex">
+          <Button variant="outline" size="sm" onClick={handleImport} className="h-9 gap-1.5 rounded-[var(--bb-radius-control)] border-[var(--bb-border)] bg-[var(--bb-bg-3)] text-[var(--bb-text-1)]">
+            <Upload className="h-3.5 w-3.5" /> Import
           </Button>
-          <Button variant="outline" size="sm" onClick={() => onEditTheme(null)} className="h-8">
-            <Plus className="mr-2 h-3.5 w-3.5" /> Create
+          <Button size="sm" onClick={() => onEditTheme(null)} className="h-9 gap-1.5 rounded-[var(--bb-radius-control)] bg-[var(--primary)] text-[var(--primary-foreground)]">
+            <Plus className="h-3.5 w-3.5" /> Create
           </Button>
-        </div>
-      </div>
+        </div>}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-3">
         {/* Default System Theme Card */}
         <ThemeCard
           name="System Default"
-          author="Fallback to standard settings"
+          author="Built in · follows Appearance settings"
           isActive={currentThemeId === null}
           onApply={() => onThemeSelect(null)}
           preview={
@@ -125,10 +127,11 @@ export function ThemeStorePanel({ currentThemeId, onThemeSelect, onEditTheme }: 
             <ThemeCard
               key={theme.id}
               name={theme.name}
-              author={`By ${theme.author}`}
+              author={isBuiltInThemeId(theme.id) ? "Built in · customization creates a copy" : `By ${theme.author}`}
               isActive={isActive}
               onApply={() => onThemeSelect(theme.id)}
               onEdit={() => onEditTheme(theme.id)}
+              editLabel={isBuiltInThemeId(theme.id) ? "Customize as new theme" : "Edit theme"}
               onExport={() => handleExport(theme)}
               onDelete={() => setPendingDelete(theme)}
               preview={
@@ -175,6 +178,7 @@ interface ThemeCardProps {
   isActive: boolean;
   onApply: () => void;
   onEdit?: () => void;
+  editLabel?: string;
   onExport?: () => void;
   onDelete?: () => void;
   preview: React.ReactNode;
@@ -185,31 +189,32 @@ interface ThemeCardProps {
 // the row actions are always visible (touch + keyboard friendly), and selection is reflected
 // via both a bb-text border AND an "Applied" badge. Border tokens use the workspace --bb-*
 // family so the card border visually matches the surrounding settings section.
-function ThemeCard({ name, author, isActive, onApply, onEdit, onExport, onDelete, preview }: ThemeCardProps) {
+function ThemeCard({ name, author, isActive, onApply, onEdit, editLabel = "Edit theme", onExport, onDelete, preview }: ThemeCardProps) {
   return (
-    <div
-      className={`group relative rounded-xl border bg-[var(--bb-bg-3)]/30 transition-colors ${
+    <FuiPanel
+      tone={isActive ? "primary" : "secondary"}
+      className={`group relative min-w-0 rounded-[var(--bb-radius)] border bg-[var(--bb-bg-1)] transition-[border-color,background-color,transform] duration-200 ${
         isActive
-          ? "border-[var(--primary)] ring-1 ring-[var(--primary)]"
-          : "border-[var(--bb-border)] hover:border-[var(--bb-border-strong)]"
+          ? "border-[var(--primary)] ring-1 ring-[var(--primary)]/50"
+          : "border-[var(--bb-border)] hover:-translate-y-0.5 hover:border-[var(--bb-border-strong)] hover:bg-[var(--bb-bg-2)]"
       }`}
       aria-current={isActive ? "true" : undefined}
     >
-      <div className="p-4 space-y-3">
+      <div className="space-y-3 p-3.5">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="font-medium text-sm text-[var(--bb-text-1)] truncate">{name}</div>
             <div className="text-[11px] text-[var(--bb-text-3)] truncate">{author}</div>
           </div>
           {isActive && (
-            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[var(--primary)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--primary)]">
+            <FuiBadge tone="success" className="shrink-0">
               <Check className="h-3 w-3" /> Applied
-            </span>
+            </FuiBadge>
           )}
         </div>
 
         {/* Preview pane — visual swatch of the actual theme surfaces */}
-        <div className="h-16 rounded-md border border-[var(--bb-border)] overflow-hidden relative">{preview}</div>
+        <div className="relative h-[72px] overflow-hidden rounded-[var(--bb-radius-control)] border border-[var(--bb-border)]">{preview}</div>
 
         {/* Footer actions — always visible (touch + keyboard a11y) */}
         <div className="flex items-center justify-between gap-2">
@@ -227,12 +232,12 @@ function ThemeCard({ name, author, isActive, onApply, onEdit, onExport, onDelete
           {(onEdit || onExport || onDelete) && (
             <div className="flex items-center gap-0.5">
               {onEdit && (
-                <Button variant="ghost" size="icon" className="h-7 w-7" title="Customize" onClick={onEdit}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-[var(--bb-radius-control)]" title={editLabel} aria-label={`${editLabel}: ${name}`} onClick={onEdit}>
                   <Palette className="h-3.5 w-3.5" />
                 </Button>
               )}
               {onExport && (
-                <Button variant="ghost" size="icon" className="h-7 w-7" title="Export JSON" onClick={onExport}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-[var(--bb-radius-control)]" title="Export JSON" aria-label={`Export ${name}`} onClick={onExport}>
                   <Download className="h-3.5 w-3.5" />
                 </Button>
               )}
@@ -240,8 +245,9 @@ function ThemeCard({ name, author, isActive, onApply, onEdit, onExport, onDelete
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-[var(--bb-text-3)] hover:text-red-500 hover:bg-red-500/10"
+                  className="h-8 w-8 rounded-[var(--bb-radius-control)] text-[var(--bb-text-3)] hover:bg-red-500/10 hover:text-red-500"
                   title="Uninstall theme"
+                  aria-label={`Uninstall ${name}`}
                   onClick={onDelete}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -251,6 +257,6 @@ function ThemeCard({ name, author, isActive, onApply, onEdit, onExport, onDelete
           )}
         </div>
       </div>
-    </div>
+    </FuiPanel>
   );
 }

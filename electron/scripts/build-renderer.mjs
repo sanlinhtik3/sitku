@@ -1,7 +1,15 @@
-import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const child = spawn(npmCommand, ["run", "build"], {
+
+if (process.platform === "darwin") {
+  const nativeBuild = spawnSync(process.execPath, ["electron/scripts/build-native-macos.mjs"], {
+    stdio: "inherit",
+  });
+  if (nativeBuild.status !== 0) process.exit(nativeBuild.status ?? 1);
+}
+
+const rendererBuild = spawnSync(npmCommand, ["run", "build"], {
   stdio: "inherit",
   shell: process.platform === "win32",
   env: {
@@ -10,8 +18,4 @@ const child = spawn(npmCommand, ["run", "build"], {
     VITE_DESKTOP_BUILD: "true",
   },
 });
-
-child.on("exit", (code, signal) => {
-  if (signal) process.kill(process.pid, signal);
-  process.exit(code ?? 0);
-});
+process.exit(rendererBuild.status ?? 1);

@@ -1,7 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { useMemo } from "react";
-import { Jarvis } from "@/components/jarvis/Jarvis";
-import { makeJarvisBrain } from "@/components/jarvis/jarvisBrain";
+import { EvVoiceAssistant, makeEvBrain } from "@/features/ev-voice";
 import { useRepositories } from "@/repositories/runtime/RepositoryProvider";
 
 /**
@@ -11,12 +10,12 @@ import { useRepositories } from "@/repositories/runtime/RepositoryProvider";
  * AgentChat) have been removed for the local-first architecture.
  */
 export function BeeBotLayout() {
-  const { notes, search } = useRepositories();
-  const brain = useMemo(() => makeJarvisBrain(notes, search), [notes, search]);
+  const repositories = useRepositories();
+  const brain = useMemo(() => makeEvBrain(repositories), [repositories]);
   return (
     <div className="h-full w-full bg-background">
       <Outlet />
-      <Jarvis brain={brain} />
+      <EvVoiceAssistant brain={brain} />
     </div>
   );
 }

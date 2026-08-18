@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import { CloseCircle } from "@solar-icons/react";
 
 import { cn } from "@/lib/utils";
 
@@ -19,7 +19,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "bb-dialog-overlay fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -29,14 +29,19 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { hideCloseButton?: boolean }
->(({ className, children, hideCloseButton, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    hideCloseButton?: boolean;
+    layout?: "centered" | "fullscreen";
+  }
+>(({ className, children, hideCloseButton, layout = "centered", ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      aria-describedby={undefined}
+      data-dialog-layout={layout}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-[95vw] sm:max-w-[90vw] md:max-w-xl lg:max-w-2xl xl:max-w-4xl max-h-[calc(96vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] translate-x-[-50%] translate-y-[-50%] gap-0 border border-border/50 bg-background/95 backdrop-blur-2xl p-3 sm:p-4 md:p-5 shadow-2xl shadow-black/50 duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 rounded-2xl overflow-hidden",
+        "bb-dialog-surface fixed left-[50%] top-[50%] z-50 grid w-full max-w-[95vw] sm:max-w-[90vw] md:max-w-xl lg:max-w-2xl xl:max-w-4xl max-h-[calc(96vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] translate-x-[-50%] translate-y-[-50%] gap-0 border border-border/50 bg-background/95 backdrop-blur-2xl p-3 sm:p-4 md:p-5 shadow-2xl shadow-black/50 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 rounded-[var(--bb-radius)] overflow-hidden",
         className,
       )}
       {...props}
@@ -45,8 +50,8 @@ const DialogContent = React.forwardRef<
       <div className="absolute inset-0 bg-gradient-to-br from-primary/3 via-transparent to-primary/3 pointer-events-none" />
       <div className="relative z-10 h-full min-h-0 flex flex-col">{children}</div>
       {!hideCloseButton && (
-        <DialogPrimitive.Close className="absolute right-2.5 top-2.5 sm:right-3 sm:top-3 z-20 rounded-lg bg-muted/40 hover:bg-muted/80 ring-offset-background transition-all hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center backdrop-blur-sm border border-border/30 opacity-80">
-          <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        <DialogPrimitive.Close className="absolute right-2.5 top-2.5 sm:right-3 sm:top-3 z-20 rounded-[var(--bb-radius-control)] bg-muted/40 hover:bg-muted/80 ring-offset-background transition-all hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center backdrop-blur-sm border border-border/30 opacity-80">
+          <CloseCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" weight="Linear" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
       )}

@@ -16,11 +16,10 @@ import {
    MessageSquarePlus
  } from "lucide-react";
  import { cn } from "@/lib/utils";
- import { AgentChatMessage } from "@/hooks/useAgentChat";
- import { useTextToSpeech } from "@/hooks/useTextToSpeech";
+import { AgentChatMessage } from "@/hooks/useAgentChat";
+import { useTextToSpeech } from "@/hooks/useTextToSpeech";
 import { exportMessageAsPdf } from "@/lib/exportMessagePdf";
-import { exportAsWord, exportAsMarkdown } from "@/lib/exportUtils";
- import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
  import { toast } from "sonner";
  import { format } from "date-fns";
  import {
@@ -304,17 +303,19 @@ export function MessageActionBar({
                 <FileDown className="h-4 w-4" />
                 Export PDF
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => {
+              <DropdownMenuItem onClick={async () => {
                 try {
-                  exportAsWord(message.content, `${botName} Response`, `beebot_${format(new Date(message.created_at), "yyyyMMdd_HHmm")}`);
+                  const { exportAsWord } = await import("@/lib/exportUtils");
+                  await exportAsWord(message.content, `${botName} Response`, `beebot_${format(new Date(message.created_at), "yyyyMMdd_HHmm")}`);
                   toast.success("Word document exported");
                 } catch { toast.error("Failed to export Word"); }
               }} className="gap-2">
                 <FileDown className="h-4 w-4" />
                 Export Word
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => {
+              <DropdownMenuItem onClick={async () => {
                 try {
+                  const { exportAsMarkdown } = await import("@/lib/exportUtils");
                   exportAsMarkdown(message.content, `beebot_${format(new Date(message.created_at), "yyyyMMdd_HHmm")}`);
                   toast.success("Markdown exported");
                 } catch { toast.error("Failed to export Markdown"); }

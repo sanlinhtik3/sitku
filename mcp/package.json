@@ -1,0 +1,13 @@
+{
+  "name": "sitku-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server exposing the local Sitku notes vault to agentic AIs. Zero dependencies.",
+  "bin": {
+    "sitku-mcp": "./sitku-mcp.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

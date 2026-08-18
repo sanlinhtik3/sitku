@@ -374,6 +374,7 @@ export const MessageThreadPanel = memo(function MessageThreadPanel({
         </AnimatePresence>
 
         <ChatInput
+          draftScope={`thread:${threadId || sourceMessage.id}`}
           onSend={handleSend}
           isStreaming={isStreaming}
           onCancel={cancelStreaming}

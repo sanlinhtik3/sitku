@@ -1,11 +1,6 @@
-import type React from "react";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { BadgeCheck, Clock3, DollarSign, Focus, ShieldAlert, Zap } from "lucide-react";
-import { CONSULTANT_FINANCE_CURRENCY, type DateRange } from "@/lib/consultantHelpers";
-
-const fmtMoney = (n: number) =>
-  `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n || 0)} ${CONSULTANT_FINANCE_CURRENCY}`;
+import { BarChart3, CircleDollarSign, Database, Target, Zap } from "lucide-react";
+import { type DateRange } from "@/lib/consultantHelpers";
 
 const clamp = (n: number) => Math.max(0, Math.min(100, n));
 
@@ -20,6 +15,7 @@ const daysInclusive = (range: DateRange) => {
 export function CfoProductivityPanel({
   range,
   dashboard,
+  targets,
   periodLabel,
 }: {
   range: DateRange;
@@ -31,103 +27,51 @@ export function CfoProductivityPanel({
     views?: number;
     engagement?: number;
     total_posts?: number;
+    posts?: number;
   } | null;
+  targets?: { data_coverage_pct:number; hundred_k_posts:number; hundred_k_goal:number; cadence_pct:number; cfo_health_pct:number } | null;
   periodLabel: string;
 }) {
   const revenue = Number(dashboard?.revenue || 0);
-  const spend = Number(dashboard?.spend || 0);
   const net = Number(dashboard?.net || 0);
   const roi = dashboard?.roi_pct == null ? null : Number(dashboard.roi_pct);
-  const views = Number(dashboard?.views || 0);
   const engagement = Number(dashboard?.engagement || 0);
-  const posts = Number(dashboard?.total_posts || 0);
+  const posts = Number(dashboard?.posts ?? dashboard?.total_posts ?? 0);
 
   const marginPct = revenue > 0 ? (net / revenue) * 100 : 0;
-  const costPerView = views > 0 ? spend / views : 0;
+  const views = Number(dashboard?.views || 0);
   const engagementRate = views > 0 ? (engagement / views) * 100 : 0;
   const dayCount = daysInclusive(range);
   const cadenceScore = clamp((posts / Math.max(1, dayCount)) * 100);
   const cfoScore = clamp((marginPct * 0.55) + (Number(roi ?? 0) * 0.25) + (engagementRate * 4));
 
-  const hacks = [
-    {
-      icon: <Focus className="h-3.5 w-3.5" />,
-      title: "Double down window",
-      body: posts < 3 ? "Post 3 test assets before judging the channel." : "Repurpose the top post into 3 angle variants.",
-    },
-    {
-      icon: <Clock3 className="h-3.5 w-3.5" />,
-      title: "Daily measurement",
-      body: "Log channel snapshots at the same time every day to make forecasts cleaner.",
-    },
-    {
-      icon: <ShieldAlert className="h-3.5 w-3.5" />,
-      title: "CFO guardrail",
-      body: spend > revenue ? "Pause low-signal spend until one offer shows positive net." : "Protect winners with a fixed reinvestment cap.",
-    },
+  const targetRows = [
+    { label:"Data coverage", value:targets?.data_coverage_pct ?? 0, hint:`${targets?.data_coverage_pct ?? 0}%`, color:"#7dd3fc", icon:<Database className="h-3.5 w-3.5"/> },
+    { label:"100K-view posts", value:targets?.hundred_k_goal ? ((targets.hundred_k_posts/targets.hundred_k_goal)*100) : 0, hint:`${targets?.hundred_k_posts ?? 0} / ${targets?.hundred_k_goal ?? 5}`, color:"var(--consultant-ac)", icon:<Target className="h-3.5 w-3.5"/> },
+    { label:"Cadence", value:targets?.cadence_pct ?? cadenceScore, hint:`${posts} posts / ${dayCount} days`, color:"#c4b5fd", icon:<BarChart3 className="h-3.5 w-3.5"/> },
+    { label:"CFO health", value:targets?.cfo_health_pct ?? cfoScore, hint:roi == null ? "needs spend data" : `${roi.toFixed(1)}% ROI`, color:"#6ee7b7", icon:<CircleDollarSign className="h-3.5 w-3.5"/> },
   ];
 
   return (
-    <Card className="consultant-card p-4">
+    <Card className="consultant-card p-4 sm:px-5">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">CFO + Productivity</div>
-          <div className="text-sm font-semibold mt-0.5">{periodLabel} {CONSULTANT_FINANCE_CURRENCY} money, focus, and execution</div>
+          <div className="consultant-section-title">Targets</div>
+          <div className="text-[11.5px] text-[#8a8a8e] mt-0.5">{periodLabel} operating goals</div>
         </div>
         <div className="h-9 w-9 rounded-xl border border-emerald-400/25 bg-emerald-500/10 flex items-center justify-center">
           <Zap className="h-4 w-4 text-emerald-300" />
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        <MiniStat icon={<DollarSign className="h-3 w-3" />} label="Net" value={fmtMoney(net)} tone={net >= 0 ? "good" : "bad"} />
-        <MiniStat icon={<BadgeCheck className="h-3 w-3" />} label="Margin" value={`${marginPct.toFixed(1)}%`} tone={marginPct >= 0 ? "good" : "bad"} />
-        <MiniStat icon={<Clock3 className="h-3 w-3" />} label="CPV" value={`${costPerView.toFixed(1)}`} />
-      </div>
-
-      <div className="space-y-3 mb-4">
-        <ProgressRow label="CFO health" value={cfoScore} hint={roi == null ? "needs spend data" : `${roi.toFixed(1)}% ROI`} />
-        <ProgressRow label="Engagement quality" value={clamp(engagementRate * 10)} hint={`${engagementRate.toFixed(2)}% ER`} />
-        <ProgressRow label="Execution cadence" value={cadenceScore} hint={`${posts} posts / ${dayCount} days`} />
-      </div>
-
-      <div className="grid gap-2">
-        {hacks.map((h) => (
-          <div key={h.title} className="consultant-panel p-2.5">
-            <div className="flex items-center gap-2 text-xs font-medium">
-              <span className="text-emerald-300">{h.icon}</span>
-              {h.title}
-            </div>
-            <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{h.body}</div>
-          </div>
-        ))}
+      <div className="space-y-[13px]">
+        {targetRows.map((row)=><TargetRow key={row.label} {...row}/>) }
       </div>
     </Card>
   );
 }
 
-function MiniStat({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone?: "good" | "bad" }) {
-  return (
-    <div className="rounded-xl border border-border/25 bg-background/25 p-2.5 min-w-0">
-      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className={`mt-1 text-xs font-semibold tabular-nums truncate ${tone === "good" ? "text-emerald-300" : tone === "bad" ? "text-rose-400" : ""}`}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function ProgressRow({ label, value, hint }: { label: string; value: number; hint: string }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-[11px]">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="tabular-nums">{hint}</span>
-      </div>
-      <Progress value={clamp(value)} className="h-1.5" />
-    </div>
-  );
-}
+function TargetRow({label,value,hint,color,icon}:{label:string;value:number;hint:string;color:string;icon:React.ReactNode}) { return <div>
+  <div className="mb-1.5 flex items-center justify-between text-[11.5px]"><span className="flex items-center gap-1.5 text-[#a4a4aa]" style={{color}}>{icon}<span className="text-[#a4a4aa]">{label}</span></span><span className="font-semibold tabular-nums text-[#e4e4e8]">{hint}</span></div>
+  <div className="h-[5px] overflow-hidden rounded-full bg-white/[.07]"><div className="consultant-grow h-full rounded-full" style={{width:`${clamp(value)}%`,background:color}}/></div>
+</div> }

@@ -18,49 +18,17 @@ import {
   CreditCard,
   Building2,
   Landmark,
-  Shirt,
-  GraduationCap,
-  Film,
-  Utensils,
-  Heart,
-  Home,
-  ShoppingBag,
-  Monitor,
-  Car,
-  Zap,
-  MoreHorizontal,
-  Briefcase,
-  Gift,
-  TrendingUp as Investment,
-  DollarSign,
   Trash2,
   RefreshCw,
   LucideIcon
-} from "lucide-react";
+} from "@/components/flowstate/solarIcons";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useExchangeRates, currencySymbols } from "@/hooks/useExchangeRates";
-import type { Transaction } from "@/hooks/useFlowState";
-
-// Icon mapping for categories
-const iconMap: Record<string, LucideIcon> = {
-  Shirt,
-  GraduationCap,
-  Film,
-  Utensils,
-  Heart,
-  Home,
-  ShoppingBag,
-  Monitor,
-  Car,
-  Zap,
-  MoreHorizontal,
-  Briefcase,
-  Gift,
-  TrendingUp: Investment,
-  Wallet,
-  DollarSign,
-};
+import { formatLocalDate } from "@/lib/dateUtils";
+import { parseTransactionLocalDate } from "@/lib/flowstate/financeDates";
+import type { Transaction, TransactionCategory } from "@/hooks/useFlowState";
+import { CategoryPicker } from "./CategoryPicker";
 
 // Currency options
 const currencies = [
@@ -83,7 +51,7 @@ interface EditTransactionDialogProps {
   onOpenChange: (open: boolean) => void;
   transaction: Transaction | null;
   accounts: Array<{ id: string; account_name: string; currency: string; account_type?: string; icon?: string }>;
-  categories: Array<{ id: string; name: string; icon: string; color: string; type: string }>;
+  categories: TransactionCategory[];
   primaryCurrency?: string;
   sourceSuggestions?: Record<string, string[]>;
   onSubmit: (id: string, data: {
@@ -139,23 +107,13 @@ export function EditTransactionDialog({
       setDescription(transaction.description || "");
       setNotes(transaction.notes || "");
       setSource(transaction.source || "");
-      setDate(new Date(transaction.transaction_date));
+      setDate(parseTransactionLocalDate(transaction.transaction_date));
     }
   }, [transaction]);
-
-  const filteredCategories = useMemo(() => 
-    categories.filter((c) => c.type === type),
-    [categories, type]
-  );
 
   const selectedAccount = useMemo(() => 
     accounts.find(a => a.id === accountId),
     [accounts, accountId]
-  );
-
-  const selectedCategory = useMemo(() => 
-    categories.find(c => c.id === categoryId),
-    [categories, categoryId]
   );
 
   // Calculate converted amount
@@ -184,7 +142,7 @@ export function EditTransactionDialog({
       category_id: categoryId,
       description,
       notes,
-      transaction_date: date.toISOString(),
+      transaction_date: formatLocalDate(date),
       source: type === "income" && source.trim() ? source.trim() : null,
     });
 
@@ -195,10 +153,6 @@ export function EditTransactionDialog({
     return currencySymbols[curr] || curr;
   };
 
-  const getIconComponent = (iconName: string): LucideIcon => {
-    return iconMap[iconName] || MoreHorizontal;
-  };
-
   const getAccountIcon = (accountType?: string): LucideIcon => {
     return accountIconMap[accountType || "default"] || Wallet;
   };
@@ -207,7 +161,7 @@ export function EditTransactionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-card/98 backdrop-blur-xl border-border/50 shadow-2xl">
+      <DialogContent className="flowstate-entry-dialog max-w-md">
         <DialogHeader className="pb-2">
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             <div className={cn(
@@ -351,58 +305,13 @@ export function EditTransactionDialog({
               Category
               <span className="text-xs text-rose-400">*</span>
             </Label>
-            <Select value={categoryId} onValueChange={setCategoryId} required>
-              <SelectTrigger className="h-12 bg-muted/30 border-border/50">
-                <SelectValue placeholder="Select category">
-                  {selectedCategory && (
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const CatIcon = getIconComponent(selectedCategory.icon);
-                        return (
-                          <div 
-                            className="p-1 rounded-md" 
-                            style={{ backgroundColor: `${selectedCategory.color}20` }}
-                          >
-                            <CatIcon className="h-4 w-4" style={{ color: selectedCategory.color }} />
-                          </div>
-                        );
-                      })()}
-                      <span>{selectedCategory.name}</span>
-                    </div>
-                  )}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="bg-popover border-border/50 max-h-64">
-                {filteredCategories.length === 0 ? (
-                  <div className="py-6 text-center text-muted-foreground text-sm">
-                    No categories available for {type}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-0.5 p-1">
-                    {filteredCategories.map((cat) => {
-                      const CatIcon = getIconComponent(cat.icon);
-                      return (
-                        <SelectItem 
-                          key={cat.id} 
-                          value={cat.id} 
-                          className="py-2.5 rounded-lg cursor-pointer"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div 
-                              className="p-2 rounded-lg" 
-                              style={{ backgroundColor: `${cat.color}20` }}
-                            >
-                              <CatIcon className="h-4 w-4" style={{ color: cat.color }} />
-                            </div>
-                            <span className="font-medium">{cat.name}</span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
+            <CategoryPicker
+              categories={categories}
+              value={categoryId}
+              onValueChange={setCategoryId}
+              type={type}
+              placeholder={`Choose ${type} category`}
+            />
           </div>
 
           {/* Date */}

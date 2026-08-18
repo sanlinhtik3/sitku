@@ -8,9 +8,10 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Target, Pencil, Trash2, CalendarClock, Check, PartyPopper } from "lucide-react";
+import { Target, Pencil, Trash2, CalendarClock, Check } from "@/components/flowstate/solarIcons";
 import { cn } from "@/lib/utils";
 import { useFlowStateGoal, type GoalProgress } from "@/hooks/useFlowStateGoal";
+import { FuiBadge, FuiProgress } from "@/design-system/fui";
 
 function money(n: number, cur: string) {
   const v = new Intl.NumberFormat("en-US", { maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2 }).format(Math.abs(n) || 0);
@@ -33,7 +34,7 @@ export function FinancialGoalCard({ userId, currency }: Props) {
   const [editing, setEditing] = useState(false);
 
   if (isLoading) {
-    return <Card className="consultant-card p-4 h-[150px] animate-pulse" />;
+    return <Card className="flowstate-glass flowstate-goal-card h-[180px] animate-pulse" />;
   }
 
   // No goal yet, or actively editing → show the simple form.
@@ -65,34 +66,20 @@ function GoalView({ data, currency, onEdit, onDelete }: { data: GoalProgress; cu
   const g = data.goal;
 
   return (
-    <Card className="consultant-card p-4">
+    <Card className="flowstate-glass flowstate-goal-card">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="h-9 w-9 rounded-xl bg-[var(--bb-accent-soft)] ring-1 ring-[var(--bb-accent)]/40 flex items-center justify-center shrink-0">
-            <Target className="h-4 w-4 text-[var(--beebot-accent)]" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold truncate">{g.title}</div>
-            <div className="text-[11px] text-muted-foreground">
-              <span className="text-emerald-300 font-medium tabular-nums">{money(data.savedClamped, currency)}</span>
-              {" "}of {money(data.target, currency)} saved
-            </div>
-          </div>
+      <div className="flowstate-goal-heading">
+        <div className="min-w-0">
+          <div className="flowstate-goal-title">{g.title}</div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <span className="text-base font-bold tabular-nums text-emerald-300 mr-1">{Math.round(data.amountPct)}%</span>
+        <div className="flowstate-goal-actions">
+          <span className="flowstate-goal-status">{Math.round(data.amountPct)}% {data.reached ? "reached" : "saved"}</span>
           <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-muted-foreground" onClick={onEdit} title="Edit goal"><Pencil className="h-3.5 w-3.5" /></Button>
           <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive" onClick={onDelete} title="Delete goal"><Trash2 className="h-3.5 w-3.5" /></Button>
         </div>
       </div>
 
-      {/* Reached banner */}
-      {data.reached && (
-        <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-emerald-300">
-          <PartyPopper className="h-3.5 w-3.5" /> Goal reached — well done!
-        </div>
-      )}
+      <div className="flowstate-goal-amount"><strong>{money(data.savedClamped, currency)}</strong><span>of {money(data.target, currency)} goal saved</span></div>
 
       {/* ── Money progress bar (segmented by source) ── */}
       <div className="relative">
@@ -103,22 +90,21 @@ function GoalView({ data, currency, onEdit, onDelete }: { data: GoalProgress; cu
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ background: data.segments[hover].color }} />
               <span className="font-medium">{data.segments[hover].source}</span>
-              <span className="text-emerald-300 tabular-nums">{money(data.segments[hover].netShare, currency)}</span>
+              <span className="text-[var(--bb-positive)] tabular-nums">{money(data.segments[hover].netShare, currency)}</span>
             </span>
           </div>
         )}
-        <div className="h-7 w-full rounded-xl bg-muted/30 overflow-hidden flex ring-1 ring-border/30">
+        <div className="flowstate-goal-segments">
           {data.segments.map((s, i) => (
             s.pctOfBar > 0 && (
               <div
                 key={s.source}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover((h) => (h === i ? null : h))}
-                className={cn("h-full flex items-center justify-center overflow-hidden transition-[filter] cursor-default", hover === i && "brightness-110")}
+                className={cn("h-full overflow-hidden rounded-[3px] transition-[filter] cursor-default", hover === i && "brightness-110")}
                 style={{ width: `${s.pctOfBar}%`, background: s.color }}
                 title={`${s.source}: ${money(s.netShare, currency)}`}
               >
-                {s.pctOfBar > 12 && <span className="text-[10px] font-medium text-black/70 truncate px-1">{s.source}</span>}
               </div>
             )
           ))}
@@ -126,7 +112,7 @@ function GoalView({ data, currency, onEdit, onDelete }: { data: GoalProgress; cu
       </div>
 
       {/* Source legend + earned/spent caption */}
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="flowstate-goal-legend">
         {data.segments.map((s) => (
           <span key={s.source} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
@@ -135,37 +121,37 @@ function GoalView({ data, currency, onEdit, onDelete }: { data: GoalProgress; cu
         ))}
         {data.segments.length === 0 && <span className="text-[10px] text-muted-foreground">No income yet — add one to fill the bar.</span>}
       </div>
-      <div className="mt-1 text-[11px] text-muted-foreground">
-        Earned <span className="text-emerald-300 tabular-nums">{money(data.earned, currency)}</span>
-        {" · "}Spent <span className="text-rose-300 tabular-nums">{money(data.spent, currency)}</span>
+      <div className="flowstate-goal-caption">
+        Earned <span className="text-[var(--bb-positive)] tabular-nums">{money(data.earned, currency)}</span>
+        {" · "}Spent <span className="text-[var(--bb-negative)] tabular-nums">{money(data.spent, currency)}</span>
         {data.remaining > 0 && <> {" · "}{money(data.remaining, currency)} to go</>}
       </div>
 
       {/* ── Time row ── */}
-      <div className="mt-3 pt-3 border-t border-border/30">
+      <div className="flowstate-goal-time">
         <div className="flex items-center justify-between gap-3 mb-1.5">
           <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <CalendarClock className="h-3.5 w-3.5" />
             {data.remainingDays > 0
               ? <><b className="text-foreground tabular-nums">{data.remainingDays}</b> day{data.remainingDays === 1 ? "" : "s"} left</>
-              : <span className="text-rose-300">Deadline passed</span>}
+              : <span className="text-[var(--bb-negative)]">Deadline passed</span>}
             <span className="text-muted-foreground/60">· {data.elapsedDays}/{data.totalDays} days used</span>
           </span>
           {/* on-track pill */}
           {data.reached ? (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-400/15 text-emerald-300 border border-emerald-400/30 flex items-center gap-1"><Check className="h-3 w-3" /> Done</span>
+            <FuiBadge tone="success"><Check className="h-3 w-3" /> Done</FuiBadge>
           ) : data.onTrack ? (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-400/15 text-emerald-300 border border-emerald-400/30 flex items-center gap-1"><Check className="h-3 w-3" /> On track</span>
+            <FuiBadge tone="success"><Check className="h-3 w-3" /> On track</FuiBadge>
           ) : (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/30">
-              Save {money(data.perDayNeeded, currency)}/day
-            </span>
+            <FuiBadge tone="warning">Save {money(data.perDayNeeded, currency)}/day</FuiBadge>
           )}
         </div>
-        {/* elapsed-time mini bar */}
-        <div className="h-1.5 w-full rounded-full bg-muted/30 overflow-hidden">
-          <div className="h-full rounded-full bg-sky-400/60" style={{ width: `${data.timePct}%` }} />
-        </div>
+        <FuiProgress
+          value={data.timePct}
+          label="Time used"
+          valueLabel={`${data.elapsedDays}/${data.totalDays} days`}
+          tone={data.reached || data.onTrack ? "success" : data.remainingDays > 0 ? "warning" : "danger"}
+        />
       </div>
     </Card>
   );
@@ -192,7 +178,7 @@ function GoalForm({ currency, initial, onSave, onCancel, saving }: {
   const valid = title.trim() && Number(amount) > 0 && endDate && endDate >= todayStr();
 
   return (
-    <Card className="consultant-card p-4">
+    <Card className="flowstate-glass flowstate-goal-card flowstate-goal-form">
       <div className="flex items-center gap-2.5 mb-3">
         <div className="h-9 w-9 rounded-xl bg-[var(--bb-accent-soft)] ring-1 ring-[var(--bb-accent)]/40 flex items-center justify-center">
           <Target className="h-4 w-4 text-[var(--beebot-accent)]" />

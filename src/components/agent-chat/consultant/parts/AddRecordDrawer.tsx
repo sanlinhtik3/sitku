@@ -2,12 +2,10 @@ import { useMemo, useState } from "react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import {
@@ -18,8 +16,9 @@ import {
 } from "@/hooks/useConsultantData";
 import {
   Facebook, Instagram, Youtube, Twitter, Linkedin, Send, Mic, Mail, Globe,
-  Music2, AtSign, Eye, Heart, MessageCircle, Share2, Bookmark, Radar,
-  ChevronDown, Loader2, Sparkles, TrendingUp, Wallet, Radio,
+  Music2, AtSign, BarChart3, CalendarDays, CheckCircle2, ChevronDown, Clock3,
+  CircleDollarSign, Layers3, Link2, Loader2, PlusCircle,
+  Sparkles, Users,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +26,14 @@ import { cn } from "@/lib/utils";
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; }
 
 const today = () => localDateString();
+const currentTime = () => new Date().toTimeString().slice(0, 5);
+const RECORD_TIME_LABEL = "Record time";
+
+function noteWithRecordTime(note: string, time: string): string | null {
+  const body = note.trim();
+  const timeLine = `${RECORD_TIME_LABEL}: ${time}`;
+  return body ? `${body}\n${timeLine}` : timeLine;
+}
 
 const PLATFORM_META: { id: Platform; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "facebook",   label: "Facebook",  icon: Facebook },
@@ -43,111 +50,427 @@ const PLATFORM_META: { id: Platform; label: string; icon: React.ComponentType<{ 
 ];
 
 export function AddRecordDrawer({ open, onOpenChange }: Props) {
-  const [tab, setTab] = useState<"content" | "channel" | "finance">("content");
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        side="right"
-        className="consultant-shell w-full sm:max-w-md p-0 border-l"
+        side="bottom"
+        className="consultant-shell w-full p-0 rounded-t-[var(--bb-radius-panel)] border-t border-border/30 max-h-[94dvh] flex flex-col overflow-hidden sm:left-1/2 sm:right-auto sm:bottom-5 sm:w-[min(760px,calc(100vw-32px))] sm:-translate-x-1/2 sm:rounded-[var(--bb-radius-panel)] sm:border"
       >
-        <div className="flex flex-col h-full">
-          <SheetHeader className="px-5 pt-4 pb-3 border-b border-border/20">
-            <div className="flex items-center gap-2.5">
-              <div className="consultant-control h-8 w-8 rounded-xl flex items-center justify-center">
-                <Sparkles className="h-4 w-4 text-primary" />
-              </div>
-              <div className="min-w-0">
-                <SheetTitle className="text-base font-semibold tracking-tight">Add Record</SheetTitle>
-                <SheetDescription className="text-[11px] text-muted-foreground/70 mt-0.5">
-                  Content, channel KPIs & CFO ledger — in one place.
-                </SheetDescription>
-              </div>
-            </div>
-          </SheetHeader>
-
-          <Tabs value={tab} onValueChange={(v) => setTab(v as "content" | "channel" | "finance")} className="flex-1 min-h-0 flex flex-col">
-            <div className="px-5 pt-4">
-              <TabsList className="consultant-control w-full h-10 p-1 rounded-full grid grid-cols-3">
-                <PillTrigger value="content" icon={TrendingUp} label="Content" />
-                <PillTrigger value="channel" icon={Radio}      label="Channel" />
-                <PillTrigger value="finance" icon={Wallet}     label="Finance" />
-              </TabsList>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-              <TabsContent value="content" className="mt-0 focus-visible:outline-none data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:slide-in-from-bottom-1">
-                <ContentForm onDone={() => onOpenChange(false)} />
-              </TabsContent>
-              <TabsContent value="channel" className="mt-0 focus-visible:outline-none data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:slide-in-from-bottom-1">
-                <ChannelForm onDone={() => onOpenChange(false)} />
-              </TabsContent>
-              <TabsContent value="finance" className="mt-0 focus-visible:outline-none data-[state=active]:animate-in data-[state=active]:fade-in-50 data-[state=active]:slide-in-from-bottom-1">
-                <FinanceForm onDone={() => onOpenChange(false)} />
-              </TabsContent>
-            </div>
-          </Tabs>
+        <div className="shrink-0 flex justify-center pt-2.5">
+          <div className="h-1 w-11 rounded-full bg-white/20" />
         </div>
+        {open && <UnifiedRecordForm onDone={() => onOpenChange(false)} />}
       </SheetContent>
     </Sheet>
   );
 }
 
-/* ─────────── Shared atoms ─────────── */
+/* ─────────── Unified record: content + performance + channel + monetization ─────────── */
 
-function PillTrigger({ value, icon: Icon, label }: { value: string; icon: LucideIcon; label: string }) {
+function UnifiedRecordForm({ onDone }: { onDone: () => void }) {
+  const posts = useConsultantPosts();
+  const metrics = useConsultantMetrics();
+  const daily = useConsultantDailySnapshots();
+  const finance = useConsultantFinance();
+
+  // ── Shared spine: one platform + one date drives the whole record ──
+  const [platform, setPlatform] = useState<Platform>("facebook");
+  const [date, setDate] = useState(today());
+  const [time, setTime] = useState(currentTime());
+
+  // ── Content (post) ──
+  const [pName, setPName] = useState("");
+  const [pUrl, setPUrl] = useState("");
+
+  // ── Performance (metrics on the post) ──
+  const [perfOpen, setPerfOpen] = useState(false);
+  const [views, setViews] = useState("");
+  const [reach, setReach] = useState("");
+  const [likes, setLikes] = useState("");
+  const [comments, setComments] = useState("");
+  const [shares, setShares] = useState("");
+  const [saves, setSaves] = useState("");
+  const [pNotes, setPNotes] = useState("");
+
+  // ── Channel KPIs (daily snapshot for the platform) ──
+  const [chOpen, setChOpen] = useState(false);
+  const [followers, setFollowers] = useState("");
+  const [tviews, setTviews] = useState("");
+  const [pcount, setPcount] = useState("");
+  const [erate, setErate] = useState("");
+  const [imps, setImps] = useState("");
+  const [chReach, setChReach] = useState("");
+  const [chNote, setChNote] = useState("");
+
+  // ── Monetization (CFO ledger entry) ──
+  const [finOpen, setFinOpen] = useState(false);
+  const [fType, setFType] = useState<"expense" | "income">("expense");
+  const [cat, setCat] = useState("Ads");
+  const [amt, setAmt] = useState("");
+  const [fNote, setFNote] = useState("");
+
+  const metricsTouched = useMemo(
+    () => [views, reach, likes, comments, shares, saves].some((v) => Number(v) > 0) || pNotes.trim().length > 0,
+    [views, reach, likes, comments, shares, saves, pNotes],
+  );
+  const channelTouched = useMemo(
+    () => [followers, tviews, pcount, erate, imps, chReach].some((v) => v.trim() !== "") || chNote.trim().length > 0,
+    [followers, tviews, pcount, erate, imps, chReach, chNote],
+  );
+  const financeTouched = amt.trim() !== "" && Number(amt) > 0;
+  const contentTouched = pName.trim().length > 0;
+  const platformMeta = PLATFORM_META.find((p) => p.id === platform) ?? PLATFORM_META[0];
+  const readyCount = [contentTouched, metricsTouched, channelTouched, financeTouched].filter(Boolean).length;
+
+  const saving =
+    posts.upsert.isPending || metrics.addOrUpdate.isPending ||
+    daily.upsert.isPending || finance.add.isPending;
+
+  const submit = async () => {
+    // Performance metrics belong to a post — a post name is required to persist them.
+    if (metricsTouched && !contentTouched) {
+      toast.error("Add a post name to save performance metrics");
+      return;
+    }
+    if (!contentTouched && !channelTouched && !financeTouched) {
+      toast.error("Fill in at least one section to save");
+      return;
+    }
+
+    const saved: string[] = [];
+    try {
+      // Each section writes through its OWN existing mutation + shape — stored data is untouched.
+      if (contentTouched) {
+        const { id } = await posts.upsert.mutateAsync({
+          post_name: pName.trim(),
+          platform,
+          post_url: pUrl.trim() || null,
+          posted_at: date,
+          notes: noteWithRecordTime("", time),
+        });
+        saved.push("content");
+        if (metricsTouched) {
+          await metrics.addOrUpdate.mutateAsync({
+            post_id: id,
+            metric_date: date,
+            views: Number(views) || 0,
+            likes: Number(likes) || 0,
+            comments: Number(comments) || 0,
+            shares: Number(shares) || 0,
+            saves: Number(saves) || 0,
+            reach: Number(reach) || 0,
+            notes: noteWithRecordTime(pNotes, time),
+          });
+          saved.push("metrics");
+        }
+      }
+      if (channelTouched) {
+        await daily.upsert.mutateAsync({
+          platform,
+          captured_at: date,
+          followers: followers.trim() ? Number(followers) : undefined,
+          total_views: tviews.trim() ? Number(tviews) : undefined,
+          posts_count: pcount.trim() ? Number(pcount) : undefined,
+          engagement_rate: erate.trim() ? Number(erate) : undefined,
+          impressions: imps.trim() ? Number(imps) : undefined,
+          reach: chReach.trim() ? Number(chReach) : undefined,
+          notes: noteWithRecordTime(chNote, time),
+        });
+        saved.push("channel");
+      }
+      if (financeTouched) {
+        await finance.add.mutateAsync({
+          entry_type: fType,
+          category: cat,
+          amount: Number(amt),
+          entry_date: date,
+          currency: CONSULTANT_FINANCE_CURRENCY,
+          description: noteWithRecordTime(fNote, time),
+        });
+        saved.push("finance");
+      }
+      toast.success(`Saved · ${saved.join(" · ")}`);
+      onDone();
+    } catch {
+      // mutation onError already toasts
+    }
+  };
+
   return (
-    <TabsTrigger
-      value={value}
-      className="rounded-full text-[12px] font-medium gap-1.5 data-[state=active]:bg-primary/20 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary/25 transition-all"
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-    </TabsTrigger>
+    <div className="flex-1 min-h-0 flex flex-col">
+      <SheetHeader className="shrink-0 px-4 pb-3 pt-3 sm:px-6 sm:pb-4">
+        <div className="flex items-start gap-3 text-left">
+          <div className="consultant-control flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
+            <Sparkles className="h-5 w-5 text-primary" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <SheetTitle className="text-[18px] font-semibold tracking-[-0.02em]">Smart Add Record</SheetTitle>
+              <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                {readyCount > 0 ? `${readyCount} ready` : "Start simple"}
+              </span>
+            </div>
+            <SheetDescription className="mt-1 text-[12px] leading-5 text-muted-foreground/75">
+              Add content, metrics, channel stats, or money without touching the data model.
+            </SheetDescription>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <MiniStatus icon={platformMeta.icon} label={platformMeta.label} />
+              <MiniStatus icon={CalendarDays} label={date} />
+              <MiniStatus icon={Clock3} label={time} />
+            </div>
+          </div>
+        </div>
+      </SheetHeader>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-2 sm:px-6 sm:pb-5">
+        <div className="mx-auto max-w-[680px] space-y-3.5">
+          <SectionCard icon={Layers3} label="Essentials" hint="Answer these first. Everything else can wait.">
+            <Field label="1. Choose platform">
+              <PlatformPicker value={platform} onChange={setPlatform} />
+            </Field>
+
+            <Field label="2. Name this record" hint="Example: Friday promo launch">
+              <Input
+                value={pName}
+                onChange={(e) => setPName(e.target.value)}
+                placeholder="Friday promo launch"
+                className={inputCls}
+              />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-[1fr_0.75fr]">
+              <Field label="3. Date">
+                <div className="relative">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/55" />
+                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={cn(inputCls, "pl-10")} />
+                </div>
+              </Field>
+              <Field label="Time">
+                <div className="relative">
+                  <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/55" />
+                  <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={cn(inputCls, "pl-10")} />
+                </div>
+              </Field>
+            </div>
+            <Field label="Link" hint="Optional">
+              <div className="relative">
+                <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/55" />
+                <Input value={pUrl} onChange={(e) => setPUrl(e.target.value)} placeholder="https://…" className={cn(inputCls, "pl-10")} />
+              </div>
+            </Field>
+          </SectionCard>
+
+        {/* PERFORMANCE — metrics on this post */}
+        <CollapsibleSection
+          icon={BarChart3}
+          label="Performance"
+          hint={metricsTouched ? "Metrics ready" : "Add views, likes, comments"}
+          active={metricsTouched}
+          open={perfOpen}
+          onOpenChange={setPerfOpen}
+        >
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            <NumberField label="Views"    value={views}    onChange={setViews} />
+            <NumberField label="Reach"    value={reach}    onChange={setReach} />
+            <NumberField label="Likes"    value={likes}    onChange={setLikes} />
+            <NumberField label="Comments" value={comments} onChange={setComments} />
+            <NumberField label="Shares"   value={shares}   onChange={setShares} />
+            <NumberField label="Saves"    value={saves}    onChange={setSaves} />
+          </div>
+          <Field label="Note" hint="Optional. Add only what you know.">
+            <Textarea
+              value={pNotes} onChange={(e) => setPNotes(e.target.value)} rows={2}
+              placeholder="Hook landed well, comment thread went deep…"
+              className="consultant-control rounded-[var(--glass-radius-control)] focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15 resize-none"
+            />
+          </Field>
+        </CollapsibleSection>
+
+        {/* CHANNEL KPIs — the platform snapshot for this date */}
+        <CollapsibleSection
+          icon={Users}
+          label="Channel KPIs"
+          hint={channelTouched ? "Snapshot ready" : "Add followers, total views, reach"}
+          active={channelTouched}
+          open={chOpen}
+          onOpenChange={setChOpen}
+        >
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            <NumberField label="Followers"    value={followers} onChange={setFollowers} placeholder="" />
+            <NumberField label="Total views"  value={tviews}    onChange={setTviews}    placeholder="" />
+            <NumberField label="Posts count"  value={pcount}    onChange={setPcount}    placeholder="" />
+            <NumberField label="Engagement %" value={erate}     onChange={setErate}     placeholder="" />
+            <NumberField label="Impressions"  value={imps}      onChange={setImps}      placeholder="" />
+            <NumberField label="Reach"        value={chReach}   onChange={setChReach}   placeholder="" />
+          </div>
+          <Field label="Note" hint="Optional">
+            <Textarea
+              value={chNote} onChange={(e) => setChNote(e.target.value)} rows={2}
+              placeholder="What changed on the channel today?"
+              className="consultant-control rounded-[var(--glass-radius-control)] focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15 resize-none"
+            />
+          </Field>
+        </CollapsibleSection>
+
+        {/* MONETIZATION — CFO ledger entry tied to this record's date */}
+        <CollapsibleSection
+          icon={CircleDollarSign}
+          label="Money"
+          hint={financeTouched ? `${fType === "income" ? "Income" : "Expense"} ready` : `Income or expense in ${CONSULTANT_FINANCE_CURRENCY}`}
+          active={financeTouched}
+          open={finOpen}
+          onOpenChange={setFinOpen}
+        >
+          <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/[0.05]">
+            {(["expense", "income"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setFType(t)}
+                className={cn(
+                  "h-9 rounded-lg text-[12px] font-medium capitalize transition-all",
+                  fType === t
+                    ? "bg-primary/20 text-primary border-primary/30"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <Field label="Category">
+              <Input value={cat} onChange={(e) => setCat(e.target.value)} className={inputCls} />
+            </Field>
+            <Field label={`Amount (${CONSULTANT_FINANCE_CURRENCY})`}>
+              <div className="relative">
+                <Input
+                  type="number" min={0} inputMode="decimal"
+                  value={amt} onChange={(e) => setAmt(e.target.value)}
+                  placeholder="100"
+                  className={cn(inputCls, "pr-16 tabular-nums font-semibold")}
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-primary">
+                  {CONSULTANT_FINANCE_CURRENCY}
+                </span>
+              </div>
+            </Field>
+          </div>
+
+          <Field label="Note">
+            <Textarea
+              value={fNote} onChange={(e) => setFNote(e.target.value)} rows={2}
+              placeholder="Optional context…"
+              className="consultant-control rounded-[var(--glass-radius-control)] focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15 resize-none"
+            />
+          </Field>
+        </CollapsibleSection>
+        </div>
+      </div>
+
+      <div className="shrink-0 border-t border-border/20 bg-background/55 px-4 py-3.5 backdrop-blur-xl sm:px-6">
+        <div className="mx-auto max-w-[680px] space-y-2.5">
+          <div className="flex flex-wrap gap-1.5">
+            <ReadinessChip label="Content" active={contentTouched} />
+            <ReadinessChip label="Metrics" active={metricsTouched} />
+            <ReadinessChip label="Channel" active={channelTouched} />
+            <ReadinessChip label="Money" active={financeTouched} />
+          </div>
+          <PrimaryCta onClick={submit} loading={saving} disabled={!contentTouched && !channelTouched && !financeTouched}>
+            Save record
+          </PrimaryCta>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function SectionCard({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+/* ─────────── Shared atoms ─────────── */
+
+function SectionCard({ icon: Icon, label, hint, children, className }: { icon: LucideIcon; label: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className={cn("consultant-panel p-4 space-y-3", className)}>
-      <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60 font-medium">{label}</div>
+    <section className={cn("consultant-panel space-y-3.5 p-3.5 sm:p-4", className)}>
+      <SectionHeading icon={Icon} label={label} hint={hint} />
       {children}
     </section>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function CollapsibleSection({
+  icon: Icon, label, hint, active, open, onOpenChange, children,
+}: {
+  icon: LucideIcon; label: string; hint: string; active: boolean;
+  open: boolean; onOpenChange: (o: boolean) => void; children: React.ReactNode;
+}) {
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange}>
+      <section className={cn("consultant-panel overflow-hidden transition-colors", active && "border-primary/25 bg-primary/[0.035]")}>
+        <CollapsibleTrigger className="w-full px-3.5 py-3.5 text-left transition-colors hover:bg-primary/[0.03] sm:px-4">
+          <div className="flex items-center justify-between gap-3">
+            <SectionHeading icon={Icon} label={label} hint={hint} active={active} />
+            <div className="flex items-center gap-2">
+              {active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+              <ChevronDown className={cn("h-4 w-4 text-muted-foreground/60 transition-transform duration-300", open && "rotate-180")} />
+            </div>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="data-[state=open]:animate-in data-[state=open]:fade-in-50 data-[state=open]:slide-in-from-top-1">
+          <div className="px-4 pb-4 space-y-3 border-t border-white/[0.04] pt-3.5">
+            {children}
+          </div>
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
+  );
+}
+
+function SectionHeading({ icon: Icon, label, hint, active }: { icon: LucideIcon; label: string; hint?: string; active?: boolean }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span className={cn("consultant-control flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", active && "border-primary/30 bg-primary/10 text-primary")}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground/85">{label}</span>
+        {hint && <span className={cn("mt-0.5 block truncate text-[12px]", active ? "text-primary/80" : "text-muted-foreground/75")}>{hint}</span>}
+      </span>
+    </div>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground/70 font-medium">{label}</Label>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground/70 font-medium">{label}</Label>
+        {hint && <span className="truncate text-[10.5px] text-muted-foreground/55">{hint}</span>}
+      </div>
       {children}
     </div>
   );
 }
 
 const inputCls =
-  "consultant-control h-11 rounded-xl focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15 transition";
+  "consultant-control h-11 rounded-xl focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15 transition placeholder:text-muted-foreground/40";
 
 function NumberField({
-  label, value, onChange, icon: Icon, placeholder = "0",
-}: { label: string; value: string; onChange: (v: string) => void; icon: LucideIcon; placeholder?: string }) {
+  label, value, onChange, placeholder = "0",
+}: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <Field label={label}>
-      <div className="relative">
-        <Icon className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
-        <Input
-          type="number" min={0} inputMode="numeric"
-          value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-          className={cn(inputCls, "pl-9 tabular-nums")}
-        />
-      </div>
+      <Input
+        type="number" min={0} inputMode="numeric"
+        value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        className={cn(inputCls, "tabular-nums")}
+      />
     </Field>
   );
 }
 
 function PlatformPicker({ value, onChange }: { value: Platform; onChange: (p: Platform) => void }) {
   return (
-    <div className="grid grid-cols-6 gap-1.5">
+    <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
       {PLATFORM_META.map(({ id, label, icon: Icon }) => {
         const active = id === value;
         return (
@@ -157,19 +480,41 @@ function PlatformPicker({ value, onChange }: { value: Platform; onChange: (p: Pl
             onClick={() => onChange(id)}
             title={label}
             className={cn(
-              "h-11 rounded-xl flex items-center justify-center transition-all border",
+              "group flex h-12 items-center justify-center gap-1.5 rounded-2xl border px-2 transition-all sm:h-11 sm:rounded-xl",
               active
-                ? "bg-primary/15 border-primary/40 text-primary"
+                ? "bg-primary/15 border-primary/40 text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.08)]"
                 : "consultant-control text-muted-foreground/80 hover:text-foreground"
             )}
             aria-pressed={active}
             aria-label={label}
           >
             <Icon className="h-4 w-4" />
+            <span className="hidden truncate text-[11px] font-medium sm:inline">{label}</span>
           </button>
         );
       })}
     </div>
+  );
+}
+
+function MiniStatus({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/25 bg-white/[0.04] px-2.5 py-1 text-[11px] text-muted-foreground">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-primary/80" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+function ReadinessChip({ label, active }: { label: string; active: boolean }) {
+  return (
+    <span className={cn(
+      "inline-flex h-6 items-center gap-1.5 rounded-full border px-2 text-[10.5px] font-medium transition-colors",
+      active ? "border-primary/25 bg-primary/10 text-primary" : "border-border/25 bg-white/[0.03] text-muted-foreground/65",
+    )}>
+      {active ? <CheckCircle2 className="h-3 w-3" /> : <PlusCircle className="h-3 w-3" />}
+      {label}
+    </span>
   );
 }
 
@@ -185,312 +530,5 @@ function PrimaryCta({
       {loading && <Loader2 className="h-4 w-4 animate-spin" />}
       {children}
     </Button>
-  );
-}
-
-/* ─────────── CONTENT (Post + Metrics unified) ─────────── */
-
-function ContentForm({ onDone }: { onDone: () => void }) {
-  const posts = useConsultantPosts();
-  const metrics = useConsultantMetrics();
-
-  // Essentials
-  const [editingId, setEditingId] = useState<string>("");
-  const [pName, setPName] = useState("");
-  const [pPlatform, setPPlatform] = useState<Platform>("facebook");
-  const [pUrl, setPUrl] = useState("");
-  const [pDate, setPDate] = useState(today());
-
-  // Performance
-  const [perfOpen, setPerfOpen] = useState(false);
-  const [views, setViews] = useState("");
-  const [reach, setReach] = useState("");
-  const [likes, setLikes] = useState("");
-  const [comments, setComments] = useState("");
-  const [shares, setShares] = useState("");
-  const [saves, setSaves] = useState("");
-  const [pNotes, setPNotes] = useState("");
-
-  const metricsTouched = useMemo(() => {
-    return [views, reach, likes, comments, shares, saves].some((v) => Number(v) > 0) || pNotes.trim().length > 0;
-  }, [views, reach, likes, comments, shares, saves, pNotes]);
-
-  // Hydrate from selected existing post
-  const onPickExisting = (id: string) => {
-    setEditingId(id);
-    if (!id) return;
-    const found = (posts.data ?? []).find((p) => p.id === id);
-    if (found) {
-      setPName(found.post_name);
-      setPPlatform(found.platform);
-      setPUrl(found.post_url ?? "");
-      setPDate(found.posted_at);
-      setPerfOpen(true);
-    }
-  };
-
-  const saving = posts.upsert.isPending || metrics.addOrUpdate.isPending;
-
-  const submit = async () => {
-    if (!pName.trim()) {
-      toast.error("Post name is required");
-      return;
-    }
-    try {
-      const { id } = await posts.upsert.mutateAsync({
-        id: editingId || undefined,
-        post_name: pName.trim(),
-        platform: pPlatform,
-        post_url: pUrl.trim() || null,
-        posted_at: pDate,
-        notes: null,
-      });
-      if (metricsTouched) {
-        await metrics.addOrUpdate.mutateAsync({
-          post_id: id,
-          metric_date: pDate,
-          views: Number(views) || 0,
-          likes: Number(likes) || 0,
-          comments: Number(comments) || 0,
-          shares: Number(shares) || 0,
-          saves: Number(saves) || 0,
-          reach: Number(reach) || 0,
-          notes: pNotes.trim() || null,
-        });
-        toast.success("Content & metrics saved");
-      } else {
-        toast.success("Content saved");
-      }
-      onDone();
-    } catch {
-      // mutation onError already toasts
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <SectionCard label="Essentials">
-        <Field label="Platform">
-          <PlatformPicker value={pPlatform} onChange={setPPlatform} />
-        </Field>
-
-        <Field label="Post name">
-          <Input
-            value={pName}
-            onChange={(e) => setPName(e.target.value)}
-            placeholder="Promo launch — Friday drop"
-            className={inputCls}
-          />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="Post URL">
-            <Input value={pUrl} onChange={(e) => setPUrl(e.target.value)} placeholder="https://…" className={inputCls} />
-          </Field>
-          <Field label="Posted at">
-            <Input type="date" value={pDate} onChange={(e) => setPDate(e.target.value)} className={inputCls} />
-          </Field>
-        </div>
-
-        {(posts.data?.length ?? 0) > 0 && (
-          <Field label="Or update existing post">
-            <Select value={editingId} onValueChange={onPickExisting}>
-              <SelectTrigger className={cn(inputCls, "text-left")}>
-                <SelectValue placeholder="Create new post" />
-              </SelectTrigger>
-              <SelectContent className="max-h-64">
-                {(posts.data ?? []).slice(0, 50).map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    <span className="truncate">{p.post_name}</span>
-                    <span className="opacity-60"> · {p.platform}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        )}
-      </SectionCard>
-
-      <Collapsible open={perfOpen} onOpenChange={setPerfOpen}>
-        <section className="consultant-panel overflow-hidden">
-          <CollapsibleTrigger className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-primary/[0.03] transition-colors">
-            <div className="flex flex-col items-start">
-              <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60 font-medium">Performance</span>
-              <span className="text-[12px] text-muted-foreground/80 mt-0.5">
-                {metricsTouched ? "Metrics ready" : "Optional — add engagement metrics"}
-              </span>
-            </div>
-            <ChevronDown className={cn("h-4 w-4 text-muted-foreground/60 transition-transform duration-300", perfOpen && "rotate-180")} />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="data-[state=open]:animate-in data-[state=open]:fade-in-50 data-[state=open]:slide-in-from-top-1">
-            <div className="px-4 pb-4 space-y-3 border-t border-white/[0.04] pt-3.5">
-              <div className="grid grid-cols-2 gap-2.5">
-                <NumberField label="Views"    value={views}    onChange={setViews}    icon={Eye} />
-                <NumberField label="Reach"    value={reach}    onChange={setReach}    icon={Radar} />
-                <NumberField label="Likes"    value={likes}    onChange={setLikes}    icon={Heart} />
-                <NumberField label="Comments" value={comments} onChange={setComments} icon={MessageCircle} />
-                <NumberField label="Shares"   value={shares}   onChange={setShares}   icon={Share2} />
-                <NumberField label="Saves"    value={saves}    onChange={setSaves}    icon={Bookmark} />
-              </div>
-              <Field label="Notes">
-                <Textarea
-                  value={pNotes} onChange={(e) => setPNotes(e.target.value)} rows={2}
-                  placeholder="Hook landed well, comment thread went deep…"
-                  className="consultant-control rounded-[var(--glass-radius-control)] focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15 resize-none"
-                />
-              </Field>
-            </div>
-          </CollapsibleContent>
-        </section>
-      </Collapsible>
-
-      <PrimaryCta onClick={submit} loading={saving} disabled={!pName.trim()}>
-        {editingId ? "Update content" : "Save content"}
-      </PrimaryCta>
-    </div>
-  );
-}
-
-/* ─────────── CHANNEL ─────────── */
-
-function ChannelForm({ onDone }: { onDone: () => void }) {
-  const daily = useConsultantDailySnapshots();
-  const [platform, setPlatform] = useState<Platform>("facebook");
-  const [date, setDate] = useState(today());
-  const [followers, setFollowers] = useState("");
-  const [tviews, setTviews] = useState("");
-  const [pcount, setPcount] = useState("");
-  const [erate, setErate] = useState("");
-  const [imps, setImps] = useState("");
-  const [reach, setReach] = useState("");
-  const [note, setNote] = useState("");
-
-  const submit = async () => {
-    await daily.upsert.mutateAsync({
-      platform, captured_at: date,
-      followers: followers ? Number(followers) : undefined,
-      total_views: tviews ? Number(tviews) : undefined,
-      posts_count: pcount ? Number(pcount) : undefined,
-      engagement_rate: erate ? Number(erate) : undefined,
-      impressions: imps ? Number(imps) : undefined,
-      reach: reach ? Number(reach) : undefined,
-      notes: note.trim() || null,
-    });
-    onDone();
-  };
-
-  return (
-    <div className="space-y-4">
-      <SectionCard label="Channel snapshot">
-        <Field label="Platform">
-          <PlatformPicker value={platform} onChange={setPlatform} />
-        </Field>
-        <Field label="Date">
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} />
-        </Field>
-      </SectionCard>
-
-      <SectionCard label="KPIs">
-        <div className="grid grid-cols-2 gap-2.5">
-          <NumberField label="Followers"    value={followers} onChange={setFollowers} icon={Heart} placeholder="" />
-          <NumberField label="Total views"  value={tviews}    onChange={setTviews}    icon={Eye} placeholder="" />
-          <NumberField label="Posts count"  value={pcount}    onChange={setPcount}    icon={Sparkles} placeholder="" />
-          <NumberField label="Engagement %" value={erate}     onChange={setErate}     icon={TrendingUp} placeholder="" />
-          <NumberField label="Impressions"  value={imps}      onChange={setImps}      icon={Radar} placeholder="" />
-          <NumberField label="Reach"        value={reach}     onChange={setReach}     icon={Share2} placeholder="" />
-        </div>
-        <Field label="Notes">
-          <Textarea
-            value={note} onChange={(e) => setNote(e.target.value)} rows={2}
-            placeholder="What changed today?"
-            className="consultant-control rounded-[var(--glass-radius-control)] focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15 resize-none"
-          />
-        </Field>
-      </SectionCard>
-
-      <PrimaryCta onClick={submit} loading={daily.upsert.isPending}>
-        Save snapshot
-      </PrimaryCta>
-    </div>
-  );
-}
-
-/* ─────────── FINANCE ─────────── */
-
-function FinanceForm({ onDone }: { onDone: () => void }) {
-  const finance = useConsultantFinance();
-  const [type, setType] = useState<"expense" | "income">("expense");
-  const [cat, setCat] = useState("Ads");
-  const [amt, setAmt] = useState("");
-  const [date, setDate] = useState(today());
-  const [note, setNote] = useState("");
-
-  const submit = async () => {
-    if (!amt) return;
-    await finance.add.mutateAsync({
-      entry_type: type, category: cat, amount: Number(amt),
-      entry_date: date, currency: CONSULTANT_FINANCE_CURRENCY, description: note.trim() || null,
-    });
-    setAmt(""); setNote("");
-    onDone();
-  };
-
-  return (
-    <div className="space-y-4">
-      <SectionCard label="Entry">
-        <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/[0.05]">
-          {(["expense", "income"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setType(t)}
-              className={cn(
-                "h-9 rounded-lg text-[12px] font-medium capitalize transition-all",
-                type === t
-                  ? "bg-primary/20 text-primary border-primary/30"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="Category">
-            <Input value={cat} onChange={(e) => setCat(e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="Date">
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} />
-          </Field>
-        </div>
-
-        <Field label={`Amount (${CONSULTANT_FINANCE_CURRENCY})`}>
-          <div className="relative">
-            <Input
-              type="number" min={0} inputMode="decimal"
-              value={amt} onChange={(e) => setAmt(e.target.value)}
-              placeholder="100"
-              className={cn(inputCls, "pr-16 text-base tabular-nums font-semibold")}
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-primary">
-              {CONSULTANT_FINANCE_CURRENCY}
-            </span>
-          </div>
-        </Field>
-
-        <Field label="Note">
-          <Textarea
-            value={note} onChange={(e) => setNote(e.target.value)} rows={2}
-            placeholder="Optional context…"
-            className="consultant-control rounded-[var(--glass-radius-control)] focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/15 resize-none"
-          />
-        </Field>
-      </SectionCard>
-
-      <PrimaryCta onClick={submit} loading={finance.add.isPending} disabled={!amt}>
-        Save entry
-      </PrimaryCta>
-    </div>
   );
 }

@@ -28,6 +28,7 @@ import { logAdminAction } from "@/lib/auditLog";
 
 // ═══ APEX DUAL-CORE AI MODELS ═══
 const GEMINI_MODELS = [
+  { id: "gemini-3.6-flash", name: "⚡ Gemini 3.6 Flash", description: "အသစ်ဆုံး + အမြန်ဆုံး agentic model", tier: "flash", isNew: true },
   { id: "gemini-3.5-flash", name: "🚀 Gemini 3.5 Flash", description: "stable + မြန်ဆန်သော agentic model", tier: "flash", isNew: true },
   { id: "gemini-3-flash-preview", name: "🚀 Gemini 3 Flash", description: "အသစ်ဆုံး + အမြန်ဆုံး", tier: "flash", isNew: true },
   { id: "gemini-3.1-pro-preview", name: "🧠 Gemini 3.1 Pro", description: "အသစ်ဆုံး reasoning + token efficient", tier: "pro", isNew: true },

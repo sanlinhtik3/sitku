@@ -17,47 +17,15 @@ import {
   CreditCard,
   Building2,
   Landmark,
-  Shirt,
-  GraduationCap,
-  Film,
-  Utensils,
-  Heart,
-  Home,
-  ShoppingBag,
-  Monitor,
-  Car,
-  Zap,
-  MoreHorizontal,
-  Briefcase,
-  Gift,
-  TrendingUp as Investment,
-  DollarSign,
   RefreshCw,
   LucideIcon
-} from "lucide-react";
+} from "@/components/flowstate/solarIcons";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useExchangeRates, currencySymbols } from "@/hooks/useExchangeRates";
-
-// Icon mapping for categories
-const iconMap: Record<string, LucideIcon> = {
-  Shirt,
-  GraduationCap,
-  Film,
-  Utensils,
-  Heart,
-  Home,
-  ShoppingBag,
-  Monitor,
-  Car,
-  Zap,
-  MoreHorizontal,
-  Briefcase,
-  Gift,
-  TrendingUp: Investment,
-  Wallet,
-  DollarSign,
-};
+import { formatLocalDate } from "@/lib/dateUtils";
+import { CategoryPicker } from "./CategoryPicker";
+import type { TransactionCategory } from "@/hooks/useFlowState";
 
 // Currency options
 const currencies = [
@@ -79,7 +47,7 @@ interface AddTransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accounts: Array<{ id: string; account_name: string; currency: string; account_type?: string; icon?: string }>;
-  categories: Array<{ id: string; name: string; icon: string; color: string; type: string }>;
+  categories: TransactionCategory[];
   primaryCurrency?: string;
   /** Distinct prior income sources per category, for autocomplete. Key = category_id. */
   sourceSuggestions?: Record<string, string[]>;
@@ -120,21 +88,10 @@ export function AddTransactionDialog({
   // Exchange rates hook
   const { convert, getRate, isLoading: ratesLoading, isFallback } = useExchangeRates("USD");
 
-  const filteredCategories = useMemo(() => 
-    categories.filter((c) => c.type === type),
-    [categories, type]
-  );
-
   // Get selected account info
   const selectedAccount = useMemo(() => 
     accounts.find(a => a.id === accountId),
     [accounts, accountId]
-  );
-
-  // Get selected category info
-  const selectedCategory = useMemo(() => 
-    categories.find(c => c.id === categoryId),
-    [categories, categoryId]
   );
 
   // Calculate converted amount
@@ -163,7 +120,7 @@ export function AddTransactionDialog({
       category_id: categoryId,
       description,
       notes,
-      transaction_date: date.toISOString(),
+      transaction_date: formatLocalDate(date),
       source: type === "income" && source.trim() ? source.trim() : null,
     });
 
@@ -180,21 +137,17 @@ export function AddTransactionDialog({
     return currencySymbols[curr] || currencies.find(c => c.value === curr)?.symbol || curr;
   };
 
-  const getIconComponent = (iconName: string): LucideIcon => {
-    return iconMap[iconName] || MoreHorizontal;
-  };
-
   const getAccountIcon = (accountType?: string): LucideIcon => {
     return accountIconMap[accountType || "default"] || Wallet;
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-card/98 backdrop-blur-xl border-border/50 shadow-2xl">
-        <DialogHeader className="pb-2">
-          <DialogTitle className="text-xl font-bold flex items-center gap-2">
+      <DialogContent className="flowstate-entry-dialog flowstate-transaction-dialog max-w-md" data-transaction-type={type}>
+        <DialogHeader className="flowstate-entry-header pb-2">
+          <DialogTitle className="flowstate-entry-title flex items-center gap-2">
             <div className={cn(
-              "p-2 rounded-xl",
+              "flowstate-entry-title-icon",
               type === "expense" 
                 ? "bg-rose-500/15 text-rose-500" 
                 : "bg-emerald-500/15 text-emerald-500"
@@ -205,23 +158,23 @@ export function AddTransactionDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flowstate-entry-form space-y-4">
           {/* Type Toggle */}
           <Tabs value={type} onValueChange={(v) => {
             setType(v as "income" | "expense");
             setCategoryId(""); // Reset category when type changes
           }} className="w-full">
-            <TabsList className="w-full grid grid-cols-2 h-12 p-1 bg-muted/50">
+            <TabsList className="flowstate-entry-type w-full grid grid-cols-2 h-11 p-1">
               <TabsTrigger 
                 value="expense" 
-                className="gap-2 h-full rounded-lg font-semibold transition-all data-[state=active]:bg-rose-500 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-rose-500/25"
+                className="flowstate-entry-expense gap-2 h-full rounded-lg font-semibold"
               >
                 <TrendingDown className="h-4 w-4" />
                 Expense
               </TabsTrigger>
               <TabsTrigger 
                 value="income" 
-                className="gap-2 h-full rounded-lg font-semibold transition-all data-[state=active]:bg-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25"
+                className="flowstate-entry-income gap-2 h-full rounded-lg font-semibold"
               >
                 <TrendingUp className="h-4 w-4" />
                 Income
@@ -337,58 +290,13 @@ export function AddTransactionDialog({
               Category
               <span className="text-xs text-rose-400">*</span>
             </Label>
-            <Select value={categoryId} onValueChange={setCategoryId} required>
-              <SelectTrigger className="h-12 bg-muted/30 border-border/50">
-                <SelectValue placeholder="Select category">
-                  {selectedCategory && (
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const CatIcon = getIconComponent(selectedCategory.icon);
-                        return (
-                          <div 
-                            className="p-1 rounded-md" 
-                            style={{ backgroundColor: `${selectedCategory.color}20` }}
-                          >
-                            <CatIcon className="h-4 w-4" style={{ color: selectedCategory.color }} />
-                          </div>
-                        );
-                      })()}
-                      <span>{selectedCategory.name}</span>
-                    </div>
-                  )}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="bg-popover border-border/50 max-h-64">
-                {filteredCategories.length === 0 ? (
-                  <div className="py-6 text-center text-muted-foreground text-sm">
-                    No categories available for {type}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-0.5 p-1">
-                    {filteredCategories.map((cat) => {
-                      const CatIcon = getIconComponent(cat.icon);
-                      return (
-                        <SelectItem 
-                          key={cat.id} 
-                          value={cat.id} 
-                          className="py-2.5 rounded-lg cursor-pointer"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div 
-                              className="p-2 rounded-lg" 
-                              style={{ backgroundColor: `${cat.color}20` }}
-                            >
-                              <CatIcon className="h-4 w-4" style={{ color: cat.color }} />
-                            </div>
-                            <span className="font-medium">{cat.name}</span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
+            <CategoryPicker
+              categories={categories}
+              value={categoryId}
+              onValueChange={setCategoryId}
+              type={type}
+              placeholder={`Choose ${type} category`}
+            />
           </div>
 
           {/* Date */}
@@ -475,12 +383,7 @@ export function AddTransactionDialog({
           {/* Submit */}
           <Button
             type="submit"
-            className={cn(
-              "w-full h-12 gap-2 font-semibold text-base shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]",
-              type === "expense"
-                ? "bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 shadow-rose-500/25"
-                : "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-emerald-500/25"
-            )}
+            className="flowstate-entry-submit w-full h-11 gap-2 font-semibold"
             disabled={isSubmitting || !amount || !categoryId}
           >
             {isSubmitting ? (

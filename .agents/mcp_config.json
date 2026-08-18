@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sitku-app-server": {
+      "url": "http://127.0.0.1:7429/mcp",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer 6763a3f325d7dcf58d90e72705a9b2a78d6b499d8ed4d9b7"
+      }
+    }
+  }
+}

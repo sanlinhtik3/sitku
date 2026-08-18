@@ -31,4 +31,14 @@ export const notesSkillManifests: SkillManifest[] = [
     entry: "skills/notes/search",
     enabledByDefault: true,
   },
+  {
+    id: "notes.query_by_date",
+    name: "Query Notes by Date",
+    version: "1.0.0",
+    description: "Queries notes by creation or modification date using instant SQLite indexes.",
+    category: "notes",
+    permissions: ["vault.read"],
+    entry: "skills/notes/query_by_date",
+    enabledByDefault: true,
+  },
 ];

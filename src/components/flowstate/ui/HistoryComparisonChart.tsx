@@ -1,8 +1,8 @@
 import { memo } from "react";
-import { Card } from "@/components/ui/card";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles } from "@/components/flowstate/solarIcons";
+import { FuiChartLegend, FuiWidget } from "@/design-system/fui";
 
 interface MonthData {
   month: string;
@@ -15,6 +15,7 @@ interface HistoryComparisonChartProps {
   data: MonthData[];
   currency: string;
   isLoading?: boolean;
+  variant?: "default" | "home";
 }
 
 const getCurrencySymbol = (currency: string) => {
@@ -42,39 +43,47 @@ export const HistoryComparisonChart = memo(function HistoryComparisonChart({
   data,
   currency,
   isLoading,
+  variant = "default",
 }: HistoryComparisonChartProps) {
   const chartData = data.map(d => ({
     name: format(new Date(d.month + "-01"), "MMM"),
     Income: d.income,
     Expenses: d.expense,
   }));
+  const latest = data[data.length - 1] ?? { income: 0, expense: 0, net: 0 };
+  const monthLabel = new Intl.DateTimeFormat(undefined, { month: "long" }).format(new Date());
 
   if (isLoading) {
     return (
-      <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+      <FuiWidget title="Monthly comparison" className={variant === "home" ? "flowstate-glass flowstate-home-comparison" : undefined}>
         <div className="flex items-center justify-center h-[200px]">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      </Card>
+      </FuiWidget>
     );
   }
 
   return (
-    <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
-      <h4 className="font-medium text-sm mb-4">Monthly Comparison</h4>
-      <div className="h-[200px]">
+    <FuiWidget
+      className={variant === "home" ? "flowstate-glass flowstate-home-comparison" : undefined}
+      eyebrow="Six-month ledger"
+      title="Monthly comparison"
+      description={variant === "home" ? `${monthLabel} · income ${formatAmount(latest.income, currency)} vs expense ${formatAmount(latest.expense, currency)}` : undefined}
+      action={<FuiChartLegend items={[{ label: "Income", color: "var(--bb-positive)" }, { label: "Expenses", color: "var(--bb-negative)" }]} />}
+    >
+      <div className={variant === "home" ? "h-[150px]" : "h-[200px]"}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} barGap={0} barCategoryGap="20%">
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+            <CartesianGrid strokeDasharray="2 5" stroke="var(--fui-chart-grid, var(--bb-border))" vertical={false} />
             <XAxis 
               dataKey="name" 
-              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tick={{ fontSize: 10, fill: "var(--bb-text-4)" }}
               tickLine={false}
               axisLine={false}
             />
             <YAxis 
               tickFormatter={(value) => formatAmount(value, currency)}
-              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tick={{ fontSize: 10, fill: "var(--bb-text-4)" }}
               tickLine={false}
               axisLine={false}
               width={50}
@@ -82,30 +91,32 @@ export const HistoryComparisonChart = memo(function HistoryComparisonChart({
             <Tooltip 
               formatter={(value: number) => [formatAmount(value, currency), ""]}
               contentStyle={{
-                backgroundColor: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
-                borderRadius: "8px",
+                backgroundColor: "var(--bb-bg-2)",
+                color: "var(--bb-text-1)",
+                border: "1px solid var(--bb-border)",
+                borderRadius: "var(--bb-radius-control)",
                 fontSize: "12px",
               }}
             />
-            <Legend 
-              wrapperStyle={{ fontSize: "11px" }}
-              iconType="circle"
-              iconSize={8}
-            />
             <Bar 
               dataKey="Income" 
-              fill="hsl(142, 76%, 36%)" 
-              radius={[4, 4, 0, 0]}
+              fill="var(--bb-positive)"
+              radius={[2, 2, 0, 0]}
             />
             <Bar 
               dataKey="Expenses" 
-              fill="hsl(0, 84%, 60%)" 
-              radius={[4, 4, 0, 0]}
+              fill="var(--bb-negative)"
+              radius={[2, 2, 0, 0]}
             />
           </BarChart>
         </ResponsiveContainer>
       </div>
-    </Card>
+      {variant === "home" && (
+        <div className="flowstate-comparison-brief">
+          <Sparkles className="h-4 w-4" aria-hidden="true" />
+          <span><strong>AI brief</strong> — {latest.income === 0 && latest.expense === 0 ? "Add transactions to unlock a monthly comparison." : latest.net >= 0 ? "Income is covering expenses. Keep the positive margin consistent." : "Expenses are above income. Review the largest category before adding new commitments."}</span>
+        </div>
+      )}
+    </FuiWidget>
   );
 });

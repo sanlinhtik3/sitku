@@ -14,7 +14,7 @@
 // their first income transaction (don't pretend there's signal).
 
 import { Card } from "@/components/ui/card";
-import { Sparkles, TrendingUp, TrendingDown, AlertTriangle, Tag, Plus, Info } from "lucide-react";
+import { Sparkles, TrendingUp, TrendingDown, AlertTriangle, Tag, Plus, Info } from "@/components/flowstate/solarIcons";
 import { cn } from "@/lib/utils";
 import type { IncomeIntelligence } from "@/hooks/useFlowStateIncomeIntelligence";
 

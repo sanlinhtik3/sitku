@@ -1,4 +1,4 @@
-import { Children, cloneElement, isValidElement, memo, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, memo, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkFrontmatter from "remark-frontmatter";
@@ -6,10 +6,11 @@ import remarkDirective from "remark-directive";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { Copy, CheckCircle as Check, Document as FileText, MagicStick3 as Sparkles, InfoCircle as Info, DangerTriangle as AlertTriangle, CheckCircle as CheckCircle2 } from "@solar-icons/react";
-import { Brain, Bot, Folder, File, FolderTree } from "lucide-react";
+import { Brain, Bot, Folder, File, FolderTree, Plus, Trash2, Tag, Calendar, Hash, Text, List, Table as TableIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAttachment } from "@/repositories/local/attachmentStore";
 import { DataviewQueryCard, type NoteItem } from "@/components/editor/DataviewQueryCard";
+import { findReadingBlockOffset, promoteImplicitTitleLine, remarkPreserveSoftLineBreaks } from "@/components/editor/markdownReading";
 
 // Renders an `attachment:<id>` reference: image → <img>, PDF → native <iframe>
 // viewer, anything else → download link. Blob URL resolved async from IndexedDB.
@@ -18,7 +19,7 @@ function AttachmentMedia({ id, alt }: { id: string; alt?: string }) {
   const [missing, setMissing] = useState(false);
   useEffect(() => {
     let alive = true;
-    getAttachment(id).then((d) => { if (alive) (d ? setData(d) : setMissing(true)); });
+    getAttachment(id).then((d) => { if (alive) { if (d) setData(d); else setMissing(true); } });
     return () => { alive = false; };
   }, [id]);
 
@@ -62,37 +63,105 @@ async function getMermaid(): Promise<MermaidLike> {
 }
 
 // ── Shiki singleton (lazy) ─────────────────────────────────────────────────
-// Shiki ships ~1.5MB of grammars; we keep ONE highlighter instance and load
-// languages on demand so the first paint isn't blocked.
-type HighlighterLike = { codeToHtml: (code: string, opts: { lang: string; theme: string }) => string; getLoadedLanguages: () => string[] };
+// The fine-grained core keeps the full language registry out of production.
+// Each supported grammar is fetched only when a visible code block needs it.
+type HighlighterLike = {
+  codeToHtml: (code: string, opts: { lang: string; theme: string }) => string;
+  getLoadedLanguages: () => string[];
+  loadLanguage: (...languages: unknown[]) => Promise<void>;
+};
+type SupportedShikiLanguage = keyof typeof SHIKI_LANGUAGE_LOADERS;
+
+const SHIKI_LANGUAGE_ALIASES: Record<string, SupportedShikiLanguage> = {
+  ts: "typescript",
+  typescript: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  javascript: "javascript",
+  jsx: "jsx",
+  json: "json",
+  md: "markdown",
+  markdown: "markdown",
+  bash: "shellscript",
+  sh: "shellscript",
+  shell: "shellscript",
+  shellscript: "shellscript",
+  css: "css",
+  html: "html",
+  yaml: "yaml",
+  yml: "yaml",
+  py: "python",
+  python: "python",
+};
+
+const SHIKI_LANGUAGE_LOADERS = {
+  typescript: () => import("@shikijs/langs/typescript"),
+  tsx: () => import("@shikijs/langs/tsx"),
+  javascript: () => import("@shikijs/langs/javascript"),
+  jsx: () => import("@shikijs/langs/jsx"),
+  json: () => import("@shikijs/langs/json"),
+  markdown: () => import("@shikijs/langs/markdown"),
+  shellscript: () => import("@shikijs/langs/shellscript"),
+  css: () => import("@shikijs/langs/css"),
+  html: () => import("@shikijs/langs/html"),
+  yaml: () => import("@shikijs/langs/yaml"),
+  python: () => import("@shikijs/langs/python"),
+} as const;
+
 let highlighterPromise: Promise<HighlighterLike> | null = null;
+const languageLoadPromises = new Map<SupportedShikiLanguage, Promise<void>>();
+
 async function getHighlighter(): Promise<HighlighterLike> {
   if (highlighterPromise) return highlighterPromise;
   highlighterPromise = (async () => {
-    // shiki/bundle/web ships ~12 popular langs only (~700KB raw / ~180KB gz),
-    // vs the full shiki bundle (~9MB). Unknown languages fall back to plain.
-    const { createHighlighter } = await import("shiki/bundle/web");
-    return createHighlighter({
-      themes: ["catppuccin-mocha", "github-light"],
-      langs: ["ts", "tsx", "js", "jsx", "json", "md", "bash", "css", "html", "yaml", "python"],
+    const [{ createHighlighterCore }, { createOnigurumaEngine }] = await Promise.all([
+      import("shiki/core"),
+      import("shiki/engine/oniguruma"),
+    ]);
+    return createHighlighterCore({
+      themes: [
+        import("@shikijs/themes/catppuccin-mocha"),
+        import("@shikijs/themes/github-light"),
+      ],
+      langs: [],
+      engine: createOnigurumaEngine(import("shiki/wasm")),
     }) as unknown as HighlighterLike;
   })();
   return highlighterPromise;
 }
-async function loadLang(_highlighter: HighlighterLike, _lang: string) {
-  // shiki/bundle/web's createHighlighter loads all listed langs eagerly at
-  // creation time — nothing to dynamically load. Unknown langs short-circuit
-  // because codeToHtml will throw and the caller catches.
+
+async function loadLang(highlighter: HighlighterLike, lang: string): Promise<SupportedShikiLanguage | null> {
+  const canonical = SHIKI_LANGUAGE_ALIASES[lang.toLowerCase()];
+  if (!canonical) return null;
+  if (highlighter.getLoadedLanguages().includes(canonical)) return canonical;
+
+  let pending = languageLoadPromises.get(canonical);
+  if (!pending) {
+    pending = highlighter.loadLanguage(SHIKI_LANGUAGE_LOADERS[canonical]());
+    languageLoadPromises.set(canonical, pending);
+  }
+  try {
+    await pending;
+  } catch (error) {
+    languageLoadPromises.delete(canonical);
+    throw error;
+  }
+  return canonical;
 }
 
 // ── Lightweight YAML frontmatter parser ────────────────────────────────────
 // Codex's metadata card needs key/value pairs. A real YAML parser is overkill
 // for the simple `key: value` style frontmatter common in notes. This handles
 // scalar values, quoted strings, and multi-line `>` / `|` blocks coarsely.
-function parseFrontmatter(raw: string): Array<{ key: string; value: string }> | null {
+export interface FrontmatterEntry {
+  key: string;
+  value: string;
+}
+
+export function parseFrontmatter(raw: string): Array<FrontmatterEntry> | null {
   if (!raw) return null;
   const lines = raw.split(/\r?\n/);
-  const out: Array<{ key: string; value: string }> = [];
+  const out: Array<FrontmatterEntry> = [];
   let pendingKey: string | null = null;
   let pendingBuffer: string[] = [];
   const flush = () => {
@@ -103,7 +172,7 @@ function parseFrontmatter(raw: string): Array<{ key: string; value: string }> | 
     }
   };
   for (const line of lines) {
-    if (!line.trim()) continue;
+    if (!line.trim() || line.trim() === "---") continue;
     const match = line.match(/^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
     if (match) {
       flush();
@@ -119,14 +188,47 @@ function parseFrontmatter(raw: string): Array<{ key: string; value: string }> | 
 }
 
 // Split `---\nfrontmatter\n---\nbody` into the two halves.
-function splitFrontmatter(content: string): { fm: string | null; body: string } {
+export function splitFrontmatter(content: string): { fm: string | null; body: string } {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!m) return { fm: null, body: content };
   return { fm: m[1], body: m[2] };
 }
 
-// ── Notion-Style Property Header Pills & YAML Text (Pillar 4) ─────────────
-function MetadataCard({ entries }: { entries: Array<{ key: string; value: string }> }) {
+export function serializeFrontmatter(entries: Array<FrontmatterEntry>, body: string): string {
+  const validEntries = entries.filter((e) => e.key.trim() !== "" || e.value.trim() !== "");
+  if (validEntries.length === 0) {
+    return body.trimStart();
+  }
+  const lines = validEntries.map((e, idx) => {
+    const k = e.key.trim() || `property_${idx + 1}`;
+    const val = e.value.trim();
+    if (val.includes(":") || val.includes("\n") || val.startsWith("#") || val.startsWith("@") || val.startsWith("!") || val.startsWith("-")) {
+      return `${k}: "${val.replace(/"/g, '\\"')}"`;
+    }
+    return `${k}: ${val}`;
+  });
+  return `---\n${lines.join("\n")}\n---\n${body.startsWith("\n") ? body.slice(1) : body}`;
+}
+
+// ── Obsidian-Style Interactive/Read-only Properties Card ───────────────────
+export interface ObsidianPropertiesCardProps {
+  entries: Array<FrontmatterEntry>;
+  editable?: boolean;
+  onUpdate?: (newEntries: Array<FrontmatterEntry>) => void;
+  onAdd?: () => void;
+}
+
+export function ObsidianPropertiesCard({ entries, editable = false, onUpdate, onAdd }: ObsidianPropertiesCardProps) {
+  const getPropertyIcon = (keyName: string) => {
+    const k = keyName.toLowerCase();
+    if (k === "tags" || k === "tag" || k === "keywords" || k === "aliases") return <Tag className="h-3.5 w-3.5 shrink-0 text-[var(--bb-accent)]" />;
+    if (k === "date" || k === "created" || k === "updated" || k === "due") return <Calendar className="h-3.5 w-3.5 shrink-0 text-[var(--bb-warning)]" />;
+    if (k === "status" || k === "priority" || k === "type" || k === "state" || k === "project") return <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--bb-positive)]" />;
+    if (k === "id" || k === "uuid" || k === "index" || k === "number") return <Hash className="h-3.5 w-3.5 shrink-0 text-[var(--bb-info)]" />;
+    if (k === "description" || k === "summary" || k === "bio" || k === "content") return <List className="h-3.5 w-3.5 shrink-0 text-[var(--bb-info)]" />;
+    return <Text className="h-3.5 w-3.5 text-[var(--bb-text-3)] shrink-0" />;
+  };
+
   const getBadgeStyle = (k: string, v: string) => {
     const val = v.toLowerCase();
     if (k === "status") {
@@ -143,41 +245,132 @@ function MetadataCard({ entries }: { entries: Array<{ key: string; value: string
     return "bg-[var(--bb-bg-3)] text-[var(--bb-text-2)] border-[var(--bb-border)]";
   };
 
+  const handleKeyChange = (index: number, newKey: string) => {
+    if (!onUpdate) return;
+    const next = [...entries];
+    next[index] = { ...next[index], key: newKey };
+    onUpdate(next);
+  };
+
+  const handleValueChange = (index: number, newValue: string) => {
+    if (!onUpdate) return;
+    const next = [...entries];
+    next[index] = { ...next[index], value: newValue };
+    onUpdate(next);
+  };
+
+  const handleDelete = (index: number) => {
+    if (!onUpdate) return;
+    const next = entries.filter((_, i) => i !== index);
+    onUpdate(next);
+  };
+
   return (
-    <div className="not-prose mb-8 rounded-2xl border border-[var(--bb-border)] bg-[var(--bb-bg-0)] p-4 shadow-sm">
+    <div className="not-prose mb-6 rounded-[var(--bb-radius-panel)] border border-[var(--bb-border)] bg-[var(--bb-bg-1)] p-4 transition-colors duration-200 hover:border-[var(--bb-border-strong)]">
       <div className="mb-3 flex items-center justify-between border-b border-[var(--bb-border)] pb-2.5 text-xs font-semibold text-[var(--bb-text-3)]">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-[var(--beebot-accent,#f4d35e)]" />
-          <span>Note Properties</span>
+          <Sparkles className="h-4 w-4 text-[var(--bb-accent)]" />
+          <span className="tracking-wide uppercase text-[11px] font-bold text-[var(--bb-text-2)]">Properties</span>
+          <span className="rounded-full bg-[var(--bb-bg-2)] px-2 py-0.5 text-[10px] font-mono text-[var(--bb-text-4)]">{entries.length}</span>
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--bb-text-4)]">YAML / AI Readable</span>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--bb-text-4)]">YAML Frontmatter</span>
       </div>
 
-      {/* Notion-Style Visual Pills */}
-      <div className="flex flex-wrap items-center gap-2.5">
-        {entries.map(({ key, value }) => {
-          const k = key.toLowerCase();
+      <div className="flex flex-col gap-1.5">
+        {entries.map((entry, idx) => {
+          const k = entry.key.toLowerCase();
           const isPill = k === "status" || k === "priority" || k === "type" || k === "project" || k === "due";
+          const isTagList = k === "tags" || k === "tag" || k === "aliases" || k === "keywords";
+
           return (
-            <div key={key} className="flex items-center gap-1.5 rounded-lg border border-[var(--bb-border)] bg-[var(--bb-bg-1)] px-2.5 py-1 text-xs">
-              <span className="font-mono text-[11px] text-[var(--bb-text-3)] uppercase tracking-wider">{key}:</span>
-              {isPill ? (
-                <span className={cn("rounded-md border px-2 py-0.5 font-medium capitalize", getBadgeStyle(k, value))}>
-                  {value}
-                </span>
-              ) : (
-                <span className="font-medium text-[var(--bb-text-1)]">{value}</span>
+            <div key={idx} className="group flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-[var(--bb-bg-1)]/70 transition-colors duration-150">
+              <div className="flex items-center gap-2 w-36 min-w-[130px] shrink-0">
+                {getPropertyIcon(entry.key)}
+                {editable ? (
+                  <input
+                    type="text"
+                    value={entry.key}
+                    onChange={(e) => handleKeyChange(idx, e.target.value)}
+                    placeholder="key"
+                    className="w-full bg-transparent font-mono text-xs text-[var(--bb-text-2)] focus:text-[var(--bb-text-1)] focus:outline-none focus:ring-1 focus:ring-[var(--beebot-accent)]/50 rounded px-1.5 py-0.5 transition-all"
+                  />
+                ) : (
+                  <span className="font-mono text-xs text-[var(--bb-text-3)] truncate">{entry.key}</span>
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                {editable ? (
+                  <input
+                    type="text"
+                    value={entry.value}
+                    onChange={(e) => handleValueChange(idx, e.target.value)}
+                    placeholder="empty"
+                    className="w-full bg-transparent font-sans text-xs text-[var(--bb-text-1)] placeholder:text-[var(--bb-text-4)] focus:outline-none focus:ring-1 focus:ring-[var(--beebot-accent)]/50 rounded px-2 py-0.5 transition-all"
+                  />
+                ) : isPill ? (
+                  <span className={cn("rounded-md border px-2 py-0.5 text-xs font-medium capitalize", getBadgeStyle(k, entry.value))}>
+                    {entry.value}
+                  </span>
+                ) : isTagList ? (
+                  <div className="flex flex-wrap gap-1">
+                    {entry.value.split(/,\s*|\s+/).filter(Boolean).map((t, i) => (
+                      <span key={i} className="rounded-md border border-[var(--beebot-accent)]/20 bg-[var(--beebot-accent)]/10 px-2 py-0.5 font-mono text-xs text-[var(--beebot-accent)]">
+                        #{t.replace(/^#/, "")}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="font-medium text-xs text-[var(--bb-text-1)] break-words">{entry.value}</span>
+                )}
+              </div>
+
+              {editable && (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(idx)}
+                  className="shrink-0 rounded p-1 text-[var(--bb-text-4)] opacity-0 transition-all hover:bg-[color-mix(in_oklab,var(--bb-negative)_10%,transparent)] hover:text-[var(--bb-negative)] group-hover:opacity-100"
+                  title="Delete property"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
               )}
             </div>
           );
         })}
       </div>
+
+      {editable && onAdd && (
+        <div className="mt-2 pt-2 border-t border-[var(--bb-border)]/50 flex items-center">
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--bb-text-3)] hover:bg-[var(--bb-bg-2)] hover:text-[var(--bb-text-1)] transition-colors duration-150"
+          >
+            <Plus className="h-3.5 w-3.5 text-[var(--beebot-accent)]" />
+            <span>Add property</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Copyable code block ────────────────────────────────────────────────────
+export const MAX_HIGHLIGHTED_CODE_LINES = 160;
+export const MAX_HIGHLIGHTED_CODE_CHARS = 20_000;
+
+export function shouldSyntaxHighlightCodeBlock(code: string): boolean {
+  if (code.length > MAX_HIGHLIGHTED_CODE_CHARS) return false;
+  let lines = 1;
+  for (let index = 0; index < code.length; index += 1) {
+    if (code.charCodeAt(index) === 10 && ++lines > MAX_HIGHLIGHTED_CODE_LINES) return false;
+  }
+  return true;
+}
+
 function CodeBlock({ language, children }: { language?: string; children: string }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const [copied, setCopied] = useState(false);
   const onCopy = () => {
     navigator.clipboard.writeText(children).then(() => {
@@ -189,29 +382,50 @@ function CodeBlock({ language, children }: { language?: string; children: string
   // unknown language. We re-tokenize when the active theme changes so dark ↔
   // light swaps don't leave stale colors.
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const canHighlight = shouldSyntaxHighlightCodeBlock(children);
+
   useEffect(() => {
+    if (!canHighlight) return;
+    const host = hostRef.current;
+    if (!host || typeof IntersectionObserver === "undefined") {
+      setIsNearViewport(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setIsNearViewport(true);
+      observer.disconnect();
+    }, { rootMargin: "700px 0px" });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [canHighlight]);
+
+  useEffect(() => {
+    if (!canHighlight || !isNearViewport) return;
     let cancelled = false;
     (async () => {
       try {
         const hl = await getHighlighter();
         const lang = language?.toLowerCase() || "text";
-        await loadLang(hl, lang);
+        const highlightedLanguage = await loadLang(hl, lang);
+        if (!highlightedLanguage) return;
         const theme = document.documentElement.getAttribute("data-bb-theme") === "light" ? "github-light" : "catppuccin-mocha";
-        const html = hl.codeToHtml(children, { lang, theme });
+        const html = hl.codeToHtml(children, { lang: highlightedLanguage, theme });
         if (!cancelled) setHighlighted(html);
       } catch { /* keep plain fallback */ }
     })();
     return () => { cancelled = true; };
-  }, [children, language]);
+  }, [canHighlight, children, isNearViewport, language]);
 
   return (
-    <div className="not-prose group relative my-[1.05em] min-w-0 max-w-full overflow-hidden rounded-[14px] border border-[#262628] bg-[#161618]">
-      <div className="flex items-center justify-between border-b border-[#262628] px-4 py-1.5">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-[#7a7a7c]">{language || "text"}</span>
+    <div ref={hostRef} data-reading-block data-source-search={children} className="not-prose group relative my-[1.05em] min-w-0 max-w-full overflow-hidden rounded-[var(--bb-radius-panel)] border border-[var(--bb-border)] bg-[var(--bb-bg-1)]">
+      <div className="flex items-center justify-between border-b border-[var(--bb-border)] px-4 py-1.5">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--bb-text-4)]">{language || "text"}</span>
         <button
           type="button"
           onClick={onCopy}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-[#9b9b9d] opacity-0 transition-opacity hover:bg-[#202022] hover:text-[#ededed] group-hover:opacity-100 focus-visible:opacity-100"
+          className="inline-flex items-center gap-1.5 rounded-[var(--bb-radius-control)] px-2 py-1 text-[11px] text-[var(--bb-text-3)] opacity-0 transition-opacity hover:bg-[var(--bb-bg-3)] hover:text-[var(--bb-text-1)] group-hover:opacity-100 focus-visible:opacity-100"
           aria-label="Copy code"
         >
           {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
@@ -219,11 +433,11 @@ function CodeBlock({ language, children }: { language?: string; children: string
       </div>
       {highlighted ? (
         <div
-          className="bb-shiki overflow-x-auto p-[1em_1.2em] font-mono text-[0.85em] leading-[1.55] text-[#d4d4d4] [&_pre]:!bg-transparent [&_pre]:!m-0 [&_pre]:!p-0"
+          className="bb-shiki overflow-x-auto p-[1em_1.2em] font-mono text-[0.85em] leading-[1.55] text-[var(--bb-text-2)] [&_pre]:!m-0 [&_pre]:!bg-transparent [&_pre]:!p-0"
           dangerouslySetInnerHTML={{ __html: highlighted }}
         />
       ) : (
-        <pre className="overflow-x-auto p-[1em_1.2em] font-mono text-[0.85em] leading-[1.55] text-[#d4d4d4]">
+        <pre className="overflow-x-auto p-[1em_1.2em] font-mono text-[0.85em] leading-[1.55] text-[var(--bb-text-2)]">
           <code>{children}</code>
         </pre>
       )}
@@ -334,13 +548,13 @@ function DirectiveCard({ name, title, children }: { name: string; title?: string
   const toneClasses: Record<typeof tone, { ring: string; iconBg: string; iconColor: string }> = {
     neutral: { ring: "border-[var(--bb-border)]",         iconBg: "bg-[var(--bb-bg-3)]",  iconColor: "text-[var(--bb-text-2)]" },
     accent:  { ring: "border-[var(--bb-border-strong)]",  iconBg: "bg-[var(--bb-accent-soft)]", iconColor: "text-[var(--bb-accent)]" },
-    info:    { ring: "border-[var(--bb-border-strong)]",  iconBg: "bg-[rgba(0,119,170,0.18)]", iconColor: "text-[#5BB0E0]" },
-    warn:    { ring: "border-[var(--bb-border-strong)]",  iconBg: "bg-[rgba(168,110,0,0.22)]", iconColor: "text-[#E0A85B]" },
-    success: { ring: "border-[var(--bb-border-strong)]",  iconBg: "bg-[rgba(22,135,90,0.20)]", iconColor: "text-[#6BD5A2]" },
+    info:    { ring: "border-[var(--bb-border-strong)]",  iconBg: "bg-[color-mix(in_oklab,var(--bb-info)_18%,transparent)]", iconColor: "text-[var(--bb-info)]" },
+    warn:    { ring: "border-[var(--bb-border-strong)]",  iconBg: "bg-[color-mix(in_oklab,var(--bb-warning)_18%,transparent)]", iconColor: "text-[var(--bb-warning)]" },
+    success: { ring: "border-[var(--bb-border-strong)]",  iconBg: "bg-[color-mix(in_oklab,var(--bb-positive)_18%,transparent)]", iconColor: "text-[var(--bb-positive)]" },
   } as const;
   const t = toneClasses[tone];
   return (
-    <aside className={cn("not-prose my-6 overflow-hidden rounded-2xl border bg-[var(--bb-bg-2)]", t.ring)}>
+    <aside className={cn("not-prose my-6 overflow-hidden rounded-[var(--bb-radius-panel)] border bg-[var(--bb-bg-2)]", t.ring)}>
       <div className="flex items-center gap-2 border-b border-[var(--bb-border)] px-4 py-2.5">
         <span className={cn("inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md", t.iconBg, t.iconColor)}>
           <Icon className="h-3.5 w-3.5" />
@@ -378,7 +592,7 @@ function EmbedBlock({ spec, depth, getNoteContent, onWikilinkActivate, isResolve
   const sectioned = resolved && heading ? extractSection(noteBody!, heading) : noteBody;
 
   return (
-    <aside className="not-prose my-5 overflow-hidden rounded-2xl border border-[var(--bb-border)] bg-[var(--bb-bg-1)]">
+    <aside data-reading-block data-source-search={`![[${spec}]]`} className="not-prose my-5 overflow-hidden rounded-2xl border border-[var(--bb-border)] bg-[var(--bb-bg-1)]">
       <button
         type="button"
         onClick={onOpen}
@@ -498,6 +712,8 @@ export interface NoteReaderProps {
   getNoteContent?: (target: string) => string | null | undefined;
   /** Notes array for live Dataview embedded queries. */
   notes?: NoteItem[];
+  /** Opens edit mode with the cursor at the selected reading block. */
+  onEditRequest?: (offset: number) => void;
   /** Internal: tracks recursive embed depth to prevent infinite loops. */
   _depth?: number;
 }
@@ -532,7 +748,7 @@ function renderWithWikilinks(
           "inline rounded-[5px] px-[6px] py-[1px] font-medium transition-colors no-underline cursor-pointer",
           resolved
             ? "text-[var(--beebot-accent,#f4d35e)] bg-[color-mix(in_oklab,var(--beebot-accent,#f4d35e)_11%,transparent)] hover:bg-[color-mix(in_oklab,var(--beebot-accent,#f4d35e)_20%,transparent)]"
-            : "text-[#9b9b9d] bg-[rgba(255,255,255,0.05)]",
+            : "bg-[color-mix(in_oklab,var(--bb-text-4)_8%,transparent)] text-[var(--bb-text-3)]",
         )}
         title={resolved ? display : `${target} (no matching note)`}
       >
@@ -606,7 +822,7 @@ function withInlineDecorations(children: ReactNode, onActivate: ((t: string) => 
   return children;
 }
 
-function extractCalloutInfo(children: ReactNode): { type: string | null; cleanedChildren: ReactNode } {
+export function extractCalloutInfo(children: ReactNode): { type: string | null; cleanedChildren: ReactNode } {
   const childArray = Children.toArray(children);
   let firstIdx = 0;
   while (firstIdx < childArray.length && typeof childArray[firstIdx] === "string" && !childArray[firstIdx].toString().trim()) {
@@ -645,13 +861,14 @@ function extractCalloutInfo(children: ReactNode): { type: string | null; cleaned
 }
 
 // ── Main reader ────────────────────────────────────────────────────────────
-export const NoteReader = memo(function NoteReader({ content, className, onWikilinkActivate, isResolvedTarget, getNoteContent, notes = [], _depth = 0 }: NoteReaderProps) {
+export const NoteReader = memo(function NoteReader({ content, className, onWikilinkActivate, isResolvedTarget, getNoteContent, notes = [], onEditRequest, _depth = 0 }: NoteReaderProps) {
   const { fm, body: rawBody } = useMemo(() => splitFrontmatter(content), [content]);
   // Preprocess standalone ![[…]] lines into :::embed[…]:::  directives so the
   // existing remark-directive pipeline picks them up.
+  const readingBody = useMemo(() => promoteImplicitTitleLine(rawBody), [rawBody]);
   const body = useMemo(() => {
-    return preprocessEmbeds(rawBody);
-  }, [rawBody]);
+    return preprocessEmbeds(readingBody);
+  }, [readingBody]);
   const metadata = useMemo(() => (fm ? parseFrontmatter(fm) : null), [fm]);
   // KaTeX CSS only matters if the body contains math — cheap substring check
   // beats lazy-loading the (~25KB) stylesheet on every reader mount.
@@ -695,6 +912,7 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
         {withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}
       </p>
     ),
+    br: () => <br />,
     a: ({ children, href, ...props }) => (
       <a {...props} href={href} target={href?.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className="text-[var(--beebot-accent,#f4d35e)] underline decoration-[color-mix(in_oklab,var(--beebot-accent,#f4d35e)_30%,transparent)] underline-offset-[3px] transition-colors hover:decoration-[var(--beebot-accent,#f4d35e)]">
         {children}
@@ -707,10 +925,10 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
       <em {...props} className="italic text-[var(--bb-text-1)]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</em>
     ),
     del: ({ children, ...props }) => (
-      <del {...props} className="line-through text-[#6a6a6c]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</del>
+      <del {...props} className="line-through text-[var(--bb-text-4)]">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</del>
     ),
     mark: ({ children, ...props }) => (
-      <mark {...props} className="bg-[rgba(255,225,120,0.26)] rounded-[4px] px-[0.16em] py-0 text-inherit">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</mark>
+      <mark {...props} className="rounded-[var(--bb-radius-control)] bg-[color-mix(in_oklab,var(--bb-warning)_26%,transparent)] px-[0.16em] py-0 text-inherit">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</mark>
     ),
     ul: ({ children, className: ulClass, ...props }) => (
       <ul {...props} className={cn("my-[0.55em] text-[var(--bb-text-1)] text-[16px] leading-[1.68] tracking-[-0.003em] space-y-[0.3em] [&_ul]:my-[0.3em] [&_ul]:pl-[1.2em] marker:text-[var(--beebot-accent,#f4d35e)]", ulClass?.includes("contains-task-list") ? "list-none pl-[0.2em]" : "list-disc pl-[1.4em]")}>
@@ -745,22 +963,22 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
                     t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "Pass" :
                     t === "question" || t === "help" ? "Question" :
                     type ? type.charAt(0).toUpperCase() + type.slice(1).toLowerCase() : "";
-      const borderClass = t === "important" || t === "danger" || t === "error" || t === "bug" ? "border-l-[#ef4444] bg-[rgba(239,68,68,0.08)]" :
-                          t === "tip" || t === "hint" || t === "suggestion" ? "border-l-[#10b981] bg-[rgba(16,185,129,0.08)]" :
-                          t === "warning" || t === "caution" || t === "attention" ? "border-l-[#f59e0b] bg-[rgba(245,158,11,0.08)]" :
-                          t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "border-l-[#22c55e] bg-[rgba(34,197,94,0.08)]" :
-                          t === "note" || t === "info" ? "border-l-[#0ea5e9] bg-[rgba(14,165,233,0.08)]" :
-                          t === "question" || t === "help" ? "border-l-[#a855f7] bg-[rgba(168,85,247,0.08)]" :
+      const borderClass = t === "important" || t === "danger" || t === "error" || t === "bug" ? "border-l-[var(--bb-negative)] bg-[color-mix(in_oklab,var(--bb-negative)_8%,transparent)]" :
+                          t === "tip" || t === "hint" || t === "suggestion" ? "border-l-[var(--bb-positive)] bg-[color-mix(in_oklab,var(--bb-positive)_8%,transparent)]" :
+                          t === "warning" || t === "caution" || t === "attention" ? "border-l-[var(--bb-warning)] bg-[color-mix(in_oklab,var(--bb-warning)_8%,transparent)]" :
+                          t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "border-l-[var(--bb-positive)] bg-[color-mix(in_oklab,var(--bb-positive)_8%,transparent)]" :
+                          t === "note" || t === "info" ? "border-l-[var(--bb-info)] bg-[color-mix(in_oklab,var(--bb-info)_8%,transparent)]" :
+                          t === "question" || t === "help" ? "border-l-[var(--bb-accent)] bg-[color-mix(in_oklab,var(--bb-accent)_8%,transparent)]" :
                           "border-l-[var(--beebot-accent,#f4d35e)] bg-[color-mix(in_oklab,var(--beebot-accent,#f4d35e)_5%,transparent)]";
-      const titleColorClass = t === "important" || t === "danger" || t === "error" || t === "bug" ? "text-[#ef4444]" :
-                              t === "tip" || t === "hint" || t === "suggestion" ? "text-[#10b981]" :
-                              t === "warning" || t === "caution" || t === "attention" ? "text-[#f59e0b]" :
-                              t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "text-[#22c55e]" :
-                              t === "note" || t === "info" ? "text-[#0ea5e9]" :
-                              t === "question" || t === "help" ? "text-[#a855f7]" :
+      const titleColorClass = t === "important" || t === "danger" || t === "error" || t === "bug" ? "text-[var(--bb-negative)]" :
+                              t === "tip" || t === "hint" || t === "suggestion" ? "text-[var(--bb-positive)]" :
+                              t === "warning" || t === "caution" || t === "attention" ? "text-[var(--bb-warning)]" :
+                              t === "pass" || t === "success" || t === "done" || t === "check" || t === "ok" ? "text-[var(--bb-positive)]" :
+                              t === "note" || t === "info" ? "text-[var(--bb-info)]" :
+                              t === "question" || t === "help" ? "text-[var(--bb-accent)]" :
                               "text-[var(--beebot-accent,#f4d35e)]";
       return (
-        <blockquote {...props} className={`my-[1.2em] rounded-[14px] border border-[#242426] border-l-[3px] py-[0.9em] px-[1.1em] text-[#c4c4c6] text-[14px] not-italic leading-[1.68] ${borderClass}`}>
+        <blockquote {...props} className={`my-[1.2em] rounded-[var(--bb-radius-panel)] border border-[var(--bb-border)] border-l-[3px] px-[1.1em] py-[0.9em] text-[14px] leading-[1.68] text-[var(--bb-text-2)] not-italic ${borderClass}`}>
           {type && (
             <div className={`font-semibold text-[13px] mb-[4px] flex items-center gap-[6px] select-none ${titleColorClass}`}>
               <span>{icon}</span>
@@ -771,7 +989,7 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
         </blockquote>
       );
     },
-    hr: () => <hr className="my-[1em] border-0 border-t border-[#262628]" />,
+    hr: () => <hr className="my-[1em] border-0 border-t border-[var(--bb-border)]" />,
     code: ({ children, className: codeClass, ...props }: { children?: ReactNode; className?: string; node?: unknown }) => {
       const rawText = typeof children === "string" ? children : Array.isArray(children) && children.every((c) => typeof c === "string") ? children.join("") : String(children || "");
       const isMultiLineOrTree = rawText.includes("\n") || rawText.includes("├──") || rawText.includes("└──") || rawText.includes("│   ") || rawText.includes("+--") || rawText.includes("|--");
@@ -781,7 +999,7 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
         const text = typeof children === "string" ? children : Array.isArray(children) && children.every((c) => typeof c === "string") ? children.join("") : null;
         const decorated = text ? decorateHexSwatches(text) : children;
         return (
-          <code {...props} className="rounded-[5px] bg-[#1c1c1e] px-[0.4em] py-[0.12em] font-mono text-[0.87em] text-[#e6c07b]">
+          <code {...props} className="rounded-[var(--bb-radius-control)] bg-[var(--bb-bg-3)] px-[0.4em] py-[0.12em] font-mono text-[0.87em] text-[var(--bb-warning)]">
             {decorated}
           </code>
         );
@@ -798,13 +1016,15 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
     },
     pre: ({ children }) => <>{children}</>, // CodeBlock already provides <pre>
     table: ({ children, ...props }) => (
-      <div className="not-prose my-[0.7em] min-w-0 max-w-full overflow-x-auto">
-        <table {...props} className="w-full border-collapse text-[14px]">{children}</table>
+      <div className="not-prose my-5 min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
+        <table {...props} className="w-full min-w-max border-collapse text-[14px] leading-[1.55] text-[var(--bb-text-1)]">{children}</table>
       </div>
     ),
     thead: ({ children, ...props }) => <thead {...props} className="border-b border-[var(--bb-border-strong)]">{children}</thead>,
-    th: ({ children, ...props }) => <th {...props} className="px-4 py-3 text-left text-[13.5px] font-semibold text-[var(--bb-text-1)]">{children}</th>,
-    td: ({ children, ...props }) => <td {...props} className="border-b border-[var(--bb-border)] px-4 py-3.5 text-[14px] leading-[1.5] text-[var(--bb-text-2)] align-top">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</td>,
+    tbody: ({ children, ...props }) => <tbody {...props}>{children}</tbody>,
+    tr: ({ children, ...props }) => <tr {...props} className="border-b border-[var(--bb-border)] transition-colors last:border-b-0 hover:bg-[var(--bb-bg-1)]/35">{children}</tr>,
+    th: ({ children, ...props }) => <th {...props} className="min-w-[140px] px-3 py-2 text-left text-[13px] font-semibold text-[var(--bb-text-1)] first:pl-0 last:pr-0">{children}</th>,
+    td: ({ children, ...props }) => <td {...props} className="min-w-[140px] px-3 py-2.5 text-[14px] leading-[1.55] text-[var(--bb-text-2)] align-top first:pl-0 last:pr-0">{withInlineDecorations(children, onWikilinkActivate, isResolvedTarget, true)}</td>,
     img: ({ alt, src, ...props }) => {
       const attachmentId = typeof src === "string" && src.startsWith("attachment:") ? src.slice("attachment:".length) : null;
       return (
@@ -819,9 +1039,9 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
       type === "checkbox"
         ? (
           checked ? (
-            <span className="inline-flex items-center justify-center h-[17px] w-[17px] border-[1.5px] border-[var(--beebot-accent,#f4d35e)] bg-[var(--beebot-accent,#f4d35e)] rounded-full mr-2 align-[-3px] text-[#000] text-[11px] font-[700]">✓</span>
+            <span className="mr-2 inline-flex h-[17px] w-[17px] items-center justify-center rounded-full border-[1.5px] border-[var(--bb-accent)] bg-[var(--bb-accent)] text-[11px] font-[700] text-[hsl(var(--primary-foreground))] align-[-3px]">✓</span>
           ) : (
-            <span className="inline-block h-[17px] w-[17px] border-[1.5px] border-[#6a6a6c] rounded-full mr-2 align-[-3px]"></span>
+            <span className="mr-2 inline-block h-[17px] w-[17px] rounded-full border-[1.5px] border-[var(--bb-text-4)] align-[-3px]"></span>
           )
         )
         : <input type={type} {...props} />
@@ -855,10 +1075,21 @@ export const NoteReader = memo(function NoteReader({ content, className, onWikil
   }), [onWikilinkActivate, isResolvedTarget, getNoteContent, notes, _depth]);
 
   return (
-    <article className={cn("mx-auto max-w-3xl min-w-0 max-w-full break-words px-2 py-6 text-[var(--bb-text-1)]", className)}>
-      {metadata && metadata.length > 0 && <MetadataCard entries={metadata} />}
+    <article
+      className={cn("bb-note-reader mx-auto max-w-3xl min-w-0 max-w-full break-words px-2 py-6 text-[var(--bb-text-1)]", className)}
+      onDoubleClick={(event) => {
+        if (!onEditRequest) return;
+        const target = event.target as HTMLElement;
+        if (target.closest("a,button,input,textarea,select")) return;
+        const block = target.closest<HTMLElement>("[data-source-search]")
+          || target.closest<HTMLElement>("[data-reading-block],h1,h2,h3,h4,h5,h6,p,li,blockquote,table,pre,aside");
+        const searchText = block?.dataset.sourceSearch || block?.innerText || target.innerText;
+        onEditRequest(findReadingBlockOffset(content, searchText || ""));
+      }}
+    >
+      {metadata && metadata.length > 0 && <ObsidianPropertiesCard entries={metadata} editable={false} />}
       <ReactMarkdown
-        remarkPlugins={[remarkFrontmatter, remarkGfm, remarkDirective, remarkDirectiveToHtml, remarkMath]}
+        remarkPlugins={[remarkFrontmatter, remarkGfm, remarkDirective, remarkDirectiveToHtml, remarkMath, remarkPreserveSoftLineBreaks]}
         rehypePlugins={[[rehypeKatex, { throwOnError: false, output: "html" }]]}
         components={components}
       >

@@ -33,7 +33,7 @@ function shiftL(hex: string, deltaL: number): string {
   return hslToHex(h, s, clamp(l + deltaL, 0, 100));
 }
 /** WCAG contrast ratio between two hex colors (1–21). */
-function contrast(a: string, b: string): number {
+export function contrastRatio(a: string, b: string): number {
   const la = relativeLuminance(a);
   const lb = relativeLuminance(b);
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
@@ -46,12 +46,12 @@ function rgba(hex: string, alpha: number): string {
  * Nudge `text` away from `bg` (toward and past `fg`'s lightness direction) until it meets
  * the target contrast ratio. Keeps customization legible; no-op if already compliant.
  */
-function ensureContrast(text: string, bg: string, ratio: number, fgL: number): string {
-  if (contrast(text, bg) >= ratio) return text;
+export function ensureContrast(text: string, bg: string, ratio: number, fgL = hexToHsl(text).l): string {
+  if (contrastRatio(text, bg) >= ratio) return text;
   const bgL = hexToHsl(bg).l;
   const dir = fgL >= bgL ? 1 : -1; // move toward the high-contrast end
   let out = text;
-  for (let i = 0; i < 100 && contrast(out, bg) < ratio; i++) {
+  for (let i = 0; i < 100 && contrastRatio(out, bg) < ratio; i++) {
     out = shiftL(out, dir * 1);
     const l = hexToHsl(out).l;
     if (l <= 0 || l >= 100) break;
@@ -66,9 +66,12 @@ export const BB_RAMP_VARS = [
   "--bb-text-1", "--bb-text-2", "--bb-text-3", "--bb-text-4",
   "--bb-border", "--bb-border-strong",
   "--bb-glass-surface", "--bb-glass-surface-strong", "--bb-glass-border",
+  "--bb-sidebar-bg", "--bb-sidebar-text", "--bb-sidebar-hover", "--bb-sidebar-border",
+  "--bb-positive", "--bb-negative", "--bb-warning", "--bb-info",
   // Chrome controls (radius / shadow / per-edge sidebar borders). Defaults live in index.css
   // so System Default is unchanged; a theme overrides them, and reset strips them.
-  "--bb-radius", "--bb-shadow",
+  "--bb-radius", "--bb-radius-panel", "--bb-radius-control", "--bb-shadow", "--bb-shadow-panel",
+  "--radius-sm", "--radius-md", "--radius-lg", "--radius-xl", "--radius-2xl", "--radius-3xl",
   "--bb-sb-border-top", "--bb-sb-border-right", "--bb-sb-border-bottom", "--bb-sb-border-left",
 ] as const;
 
@@ -79,62 +82,67 @@ export function deriveBbVars(theme: CustomTheme, opts: DeriveOpts = {}): Record<
   const c = theme.colors;
   const base = c["core.background"] || "#161925";
   const fg = c["core.foreground"] || "#e2e8f0";
+  const surface = c["card.background"] || base;
+  const raised = c["muted.main"] || surface;
   const borderC = c["core.border"] || base;
-  const hover = c["secondary.main"] || c["accent.main"] || base;
+  const hover = c["secondary.main"] || raised;
   const active = c["accent.main"] || hover;
   const isDark = theme.type ? theme.type === "dark" : relativeLuminance(base) < 0.4;
   const dir = isDark ? 1 : -1; // elevation lightens dark themes, darkens light themes
   const flat = Boolean(theme.flat);
 
   // ── Background elevation ramp ──
-  // bg-1 is the primary surface (= core.background). bg-0 is the deeper canvas behind
-  // floating panels. bg-2/3/4 step "up" in elevation. Flat collapses everything to base,
-  // leaving ONLY the hover token (bg-3) and active (bg-4) tinted.
+  // Flat uses one shared canvas. Hover and active colors still provide interaction
+  // feedback, but cards no longer create a second elevation layer.
   const bg: Record<string, string> = flat
     ? {
         "--bb-bg-0": base,
         "--bb-bg-1": base,
         "--bb-bg-2": base,
-        "--bb-bg-3": hover,   // hover-only background
+        "--bb-bg-3": hover,
         "--bb-bg-4": active,
       }
     : {
         "--bb-bg-0": shiftL(base, -dir * 5),
         "--bb-bg-1": base,
-        "--bb-bg-2": shiftL(base, dir * 3),
-        "--bb-bg-3": shiftL(base, dir * 6),
-        "--bb-bg-4": shiftL(base, dir * 9),
+        "--bb-bg-2": surface,
+        "--bb-bg-3": raised,
+        "--bb-bg-4": active,
       };
 
   // ── Text ramp (WCAG-clamped against bg-1) ──
   const fgL = hexToHsl(fg).l;
-  const t1 = fg; // user's exact foreground — never clamped
+  let t1 = fg;
   let t2 = shiftL(fg, -dir * 12);
   let t3 = shiftL(fg, -dir * 28);
   let t4 = shiftL(fg, -dir * 42);
   if (!opts.ignoreContrast) {
+    t1 = ensureContrast(t1, base, 4.5, fgL);
     t2 = ensureContrast(t2, base, 4.5, fgL);
     t3 = ensureContrast(t3, base, 4.5, fgL);
     t4 = ensureContrast(t4, base, 3.0, fgL);
   }
 
   // ── Borders ──
-  const border = borderC;
-  const borderStrong = flat ? borderC : shiftL(borderC, dir * 5);
+  const border = flat && contrastRatio(borderC, base) < 1.15 ? shiftL(base, dir * 8) : borderC;
+  const borderStrong = shiftL(border, dir * 5);
 
   // ── Glass ──
-  const glassSurface = flat ? base : rgba(shiftL(base, dir * 2), 0.55);
-  const glassSurfaceStrong = flat ? base : rgba(shiftL(base, dir * 4), 0.72);
-  const glassBorder = isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.06)";
+  const glassSurface = flat ? base : rgba(surface, 0.72);
+  const glassSurfaceStrong = flat ? base : rgba(raised, 0.88);
+  const glassBorder = flat ? border : isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.06)";
 
   // ── Chrome controls (radius / shadow / per-edge sidebar borders) ──
   const radius = c["core.radius"] || "0rem";
-  // Flat themes default to no shadow; explicit `shadow:false` always wins.
-  const shadow = theme.shadow === false || (theme.shadow === undefined && flat)
+  const radiusValue = clamp(parseFloat(radius) || 0, 0, 2);
+  const rem = (value: number) => `${Number(value.toFixed(3))}rem`;
+  const exactRadius = rem(radiusValue);
+  // Flat is a no-elevation contract; elevated themes retain the user's shadow choice.
+  const shadow = flat || theme.shadow === false
     ? "none"
     : "0 14px 42px -14px rgba(0,0,0,0.55)";
   const sb = theme.sidebarBorders ?? {};
-  const edge = (on: boolean | undefined) => (on === false ? "0" : "1px");
+  const edge = (on: boolean | undefined) => (on === false ? "0" : "0.5px");
 
   return {
     ...bg,
@@ -147,8 +155,27 @@ export function deriveBbVars(theme: CustomTheme, opts: DeriveOpts = {}): Record<
     "--bb-glass-surface": glassSurface,
     "--bb-glass-surface-strong": glassSurfaceStrong,
     "--bb-glass-border": glassBorder,
-    "--bb-radius": radius,
+    "--bb-sidebar-bg": c["sidebar.background"] || base,
+    "--bb-sidebar-text": c["sidebar.foreground"] || t1,
+    "--bb-sidebar-hover": c["sidebar.accent"] || hover,
+    "--bb-sidebar-border": c["sidebar.border"] || border,
+    // Status meaning is independent from chart series order. Optional semantic
+    // colors preserve compatibility with imported themes created before this contract.
+    "--bb-positive": c["semantic.positive"] || c["chart.3"] || "#10b981",
+    "--bb-negative": c["semantic.negative"] || c["chart.2"] || "#ef4444",
+    "--bb-warning": c["semantic.warning"] || c["chart.1"] || "#f59e0b",
+    "--bb-info": c["semantic.info"] || c["chart.4"] || "#3b82f6",
+    "--bb-radius": exactRadius,
+    "--bb-radius-panel": exactRadius,
+    "--bb-radius-control": exactRadius,
     "--bb-shadow": shadow,
+    "--bb-shadow-panel": shadow,
+    "--radius-sm": exactRadius,
+    "--radius-md": exactRadius,
+    "--radius-lg": exactRadius,
+    "--radius-xl": exactRadius,
+    "--radius-2xl": exactRadius,
+    "--radius-3xl": exactRadius,
     "--bb-sb-border-top": edge(sb.top),
     "--bb-sb-border-right": edge(sb.right),
     "--bb-sb-border-bottom": edge(sb.bottom),

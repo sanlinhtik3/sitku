@@ -30,6 +30,7 @@ export interface SRTGlobalSettings {
 
 export const GEMINI_MODELS = [
   // Gemini 3 (Latest)
+  { id: "gemini-3.6-flash", name: "Gemini 3.6 Flash", nameNative: "အသစ်ဆုံး + အမြန်ဆုံး Agentic Model", tier: "flash", icon: "⚡" },
   { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", nameNative: "Stable + မြန်ဆန်သော Agentic Model", tier: "flash", icon: "🚀" },
   { id: "gemini-3-flash-preview", name: "Gemini 3 Flash", nameNative: "အသစ်ဆုံး + အမြန်ဆုံး", tier: "flash", icon: "🚀" },
   { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro", nameNative: "အသစ်ဆုံး Reasoning", tier: "pro", icon: "🧠" },

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Wallet, CreditCard, Smartphone, Bitcoin } from "lucide-react";
+import { Loader2, Wallet, CreditCard, Smartphone, Bitcoin } from "@/components/flowstate/solarIcons";
 
 interface AddAccountDialogProps {
   open: boolean;
@@ -58,7 +58,7 @@ export function AddAccountDialog({ open, onOpenChange, onSubmit, isSubmitting }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-background/95 backdrop-blur-xl">
+      <DialogContent className="flowstate-entry-dialog max-w-md">
         <DialogHeader>
           <DialogTitle className="text-lg font-bold">Add Account</DialogTitle>
         </DialogHeader>

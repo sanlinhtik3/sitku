@@ -3,6 +3,7 @@ export interface NoteFile {
   title: string;
   content: string;
   frontmatter?: Record<string, unknown>;
+  ctimeMs?: number;
   mtimeMs?: number;
   contentHash?: string;
 }
@@ -13,6 +14,7 @@ export interface VaultEntry {
   kind: "folder" | "note";
   title?: string;
   depth: number;
+  ctimeMs?: number;
   mtimeMs?: number;
   contentHash?: string;
 }
@@ -21,6 +23,10 @@ export interface ListNotesInput {
   query?: string;
   folder?: string;
   limit?: number;
+  createdAfter?: number;
+  modifiedAfter?: number;
+  sortBy?: "mtime" | "ctime" | "title";
+  sortOrder?: "asc" | "desc";
 }
 
 export interface ListVaultEntriesInput {
@@ -51,9 +57,18 @@ export interface NoteVersion {
   size: number;
 }
 
+export interface QueryByDateInput {
+  dateRange?: "today" | "yesterday" | "this_week" | "this_month" | string;
+  action?: "created" | "modified" | string;
+  createdAfter?: number;
+  modifiedAfter?: number;
+  limit?: number;
+}
+
 export interface NotesRepository {
   listEntries(input?: ListVaultEntriesInput): Promise<VaultEntry[]>;
   listNotes(input?: ListNotesInput): Promise<NoteFile[]>;
+  queryByDate?(input?: QueryByDateInput): Promise<NoteFile[]>;
   readNote(path: string): Promise<NoteFile | null>;
   writeNote(input: WriteNoteInput): Promise<NoteFile>;
   deleteNote(path: string): Promise<void>;
@@ -66,4 +81,7 @@ export interface NotesRepository {
   // store implements it; desktop/runtime repositories may omit it.
   listVersions?(path: string): Promise<NoteVersion[]>;
   getVersionContent?(id: number): Promise<string | null>;
+  // Pillar 3: Zero-Data-Loss Durability Guarantee (Flush-on-Unload). Optional
+  // synchronous emergency save for beforeunload / visibilitychange / pagehide.
+  emergencySaveSync?(path: string, content: string, expectedHash?: string): void;
 }

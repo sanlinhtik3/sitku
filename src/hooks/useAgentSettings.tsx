@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 
 export interface AgentSettings {
   id: string;
@@ -21,7 +21,7 @@ export function useAgentSettings(userId: string | undefined) {
   const { data: settings, isLoading, refetch } = useQuery({
     queryKey: ["agent-settings", userId],
     queryFn: async () => {
-      if (!userId) return null;
+      if (!isSupabaseConfigured || !userId) return null;
       
       const { data, error } = await supabase
         .from("user_agent_settings")
@@ -30,13 +30,16 @@ export function useAgentSettings(userId: string | undefined) {
         .single();
 
       if (error && error.code !== "PGRST116") {
-        console.error("Error fetching agent settings:", error);
+        if (isSupabaseConfigured) {
+          const msg = typeof error === "object" && error !== null && "message" in error ? (error as any).message : String(error);
+          console.error("Error fetching agent settings:", msg);
+        }
         return null;
       }
 
       return data as AgentSettings | null;
     },
-    enabled: !!userId,
+    enabled: isSupabaseConfigured && !!userId,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 

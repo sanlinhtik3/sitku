@@ -1,7 +1,8 @@
 import { memo } from "react";
-import { LucideIcon, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { LucideIcon, TrendingUp, TrendingDown } from "@/components/flowstate/solarIcons";
 import { cn } from "@/lib/utils";
 import { MultiCurrencyValue } from "@/hooks/useFlowState";
+import { FuiLabel, FuiMetric, FuiPanel } from "@/design-system/fui";
 
 interface StatCardProps {
   title: string;
@@ -14,36 +15,28 @@ interface StatCardProps {
   compact?: boolean;
   multiValues?: MultiCurrencyValue;
   primaryCurrency?: string;
+  previousValue?: number;
+  previousLabel?: string;
+  context?: string;
+  increaseIsPositive?: boolean;
 }
 
 const colorMap = {
   green: {
-    bg: "from-emerald-500/20 to-emerald-600/10",
-    border: "border-emerald-500/30",
-    icon: "bg-emerald-500/20 text-emerald-500",
-    value: "text-emerald-500",
-    glow: "shadow-emerald-500/10",
+    icon: "text-[var(--bb-positive)]",
+    value: "text-[var(--bb-text-1)]",
   },
   red: {
-    bg: "from-rose-500/20 to-rose-600/10",
-    border: "border-rose-500/30",
-    icon: "bg-rose-500/20 text-rose-500",
-    value: "text-rose-500",
-    glow: "shadow-rose-500/10",
+    icon: "text-[var(--bb-negative)]",
+    value: "text-[var(--bb-negative)]",
   },
   blue: {
-    bg: "from-blue-500/20 to-blue-600/10",
-    border: "border-blue-500/30",
-    icon: "bg-blue-500/20 text-blue-500",
-    value: "text-blue-500",
-    glow: "shadow-blue-500/10",
+    icon: "text-[var(--bb-info)]",
+    value: "text-[var(--bb-text-1)]",
   },
   purple: {
-    bg: "from-purple-500/20 to-purple-600/10",
-    border: "border-purple-500/30",
-    icon: "bg-purple-500/20 text-purple-500",
-    value: "text-purple-500",
-    glow: "shadow-purple-500/10",
+    icon: "text-[var(--bb-accent)]",
+    value: "text-[var(--bb-text-1)]",
   },
 };
 
@@ -91,98 +84,87 @@ export const StatCard = memo(({
   compact = false,
   multiValues,
   primaryCurrency = "THB",
+  previousValue,
+  previousLabel,
+  context,
+  increaseIsPositive = true,
 }: StatCardProps) => {
   const colors = colorMap[color];
   const isPositiveChange = percentageChange !== undefined && percentageChange > 0;
   const isNegativeChange = percentageChange !== undefined && percentageChange < 0;
   const hasNoChange = percentageChange === 0;
+  const isFavorable = hasNoChange || (isPositiveChange ? increaseIsPositive : !increaseIsPositive);
+  const showDelta = showTrend && percentageChange !== undefined && percentageChange !== 0;
 
   const [primary, secondary1, secondary2] = getCurrencyOrder(primaryCurrency);
 
   return (
-    <div
+    <FuiPanel
+      tone="secondary"
       className={cn(
-        "relative rounded-xl border backdrop-blur-xl overflow-hidden transition-all hover:scale-[1.02]",
-        `bg-gradient-to-br ${colors.bg}`,
-        colors.border,
-        `shadow-lg ${colors.glow}`,
-        compact ? "p-3" : "p-4"
+        "flowstate-glass flowstate-stat relative overflow-hidden",
+        compact ? "p-[14px]" : "p-4"
       )}
     >
-      {/* Background pattern */}
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute top-0 right-0 w-20 h-20 rounded-full bg-white blur-2xl" />
-      </div>
-
       <div className="relative flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className={cn(
-            "text-muted-foreground font-medium truncate",
+          <FuiLabel className={cn(
+            "flowstate-eyebrow truncate",
             compact ? "text-[10px]" : "text-xs"
           )}>
             {title}
-          </p>
+          </FuiLabel>
           
           {/* Multi-currency display - dynamic based on primaryCurrency */}
           {multiValues ? (
             <div className="mt-0.5">
               {/* Primary currency */}
-              <p className={cn(
-                "font-bold truncate",
-                colors.value,
-                compact ? "text-base" : "text-xl sm:text-2xl"
-              )}>
-                {formatMultiValue(multiValues[primary], primary)}
-              </p>
+              <div className="flowstate-stat-value-row">
+                <FuiMetric className={cn(
+                  "font-bold truncate",
+                  colors.value,
+                  compact ? "text-[19px] sm:text-[23px]" : "text-xl sm:text-2xl"
+                )}>
+                  {formatMultiValue(multiValues[primary], primary)}
+                </FuiMetric>
+                {showDelta && (
+                  <span className={cn("flowstate-stat-delta", isFavorable ? "is-positive" : "is-negative")} aria-label={`${percentageChange > 0 ? "increased" : "decreased"} ${Math.abs(percentageChange).toFixed(1)} percent versus last month`}>
+                    {isPositiveChange ? <TrendingUp aria-hidden="true" /> : <TrendingDown aria-hidden="true" />}
+                    {percentageChange > 0 ? "+" : "−"}{Math.abs(percentageChange).toFixed(1)}%
+                  </span>
+                )}
+              </div>
               {/* Secondary currencies */}
               <p className={cn(
-                "text-muted-foreground truncate",
+                "flowstate-stat-subline text-muted-foreground truncate",
                 compact ? "text-[9px]" : "text-xs"
-              )}>
-                {formatMultiValue(multiValues[secondary1], secondary1)} • {formatMultiValue(multiValues[secondary2], secondary2)}
+              )} title={context}>
+                {formatMultiValue(multiValues[secondary1], secondary1)} · {formatMultiValue(multiValues[secondary2], secondary2)}
+                {previousValue !== undefined && previousLabel ? ` · ${previousLabel} ${formatMultiValue(previousValue, primary)}` : ""}
+                {context ? ` · ${context}` : ""}
               </p>
             </div>
           ) : (
-            <p className={cn(
+            <FuiMetric className={cn(
               "font-bold truncate mt-0.5",
               colors.value,
               compact ? "text-base" : "text-xl sm:text-2xl"
             )}>
               {formatMultiValue(value, primaryCurrency as "THB" | "USD" | "MMK")}
-            </p>
+            </FuiMetric>
           )}
           
-          {showTrend && percentageChange !== undefined && (
-            <div className="flex items-center gap-1 mt-1">
-              {isPositiveChange && (
-                <TrendingUp className={cn("text-emerald-500", compact ? "h-3 w-3" : "h-3.5 w-3.5")} />
-              )}
-              {isNegativeChange && (
-                <TrendingDown className={cn("text-rose-500", compact ? "h-3 w-3" : "h-3.5 w-3.5")} />
-              )}
-              {hasNoChange && (
-                <Minus className={cn("text-muted-foreground", compact ? "h-3 w-3" : "h-3.5 w-3.5")} />
-              )}
-              <span className={cn(
-                "font-medium",
-                compact ? "text-[10px]" : "text-xs",
-                isPositiveChange ? "text-emerald-500" : isNegativeChange ? "text-rose-500" : "text-muted-foreground"
-              )}>
-                {Math.abs(percentageChange).toFixed(1)}% vs last month
-              </span>
-            </div>
-          )}
         </div>
 
         <div className={cn(
-          "rounded-xl flex items-center justify-center shrink-0",
+          "flowstate-stat-icon flex items-center justify-center shrink-0",
           colors.icon,
           compact ? "h-8 w-8" : "h-10 w-10"
         )}>
           <Icon className={cn(compact ? "h-4 w-4" : "h-5 w-5")} />
         </div>
       </div>
-    </div>
+    </FuiPanel>
   );
 });
 

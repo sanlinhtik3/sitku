@@ -5,6 +5,15 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+// A local-first desktop build must never treat the development placeholder URL
+// as an available cloud backend. Consumers use this guard before invoking RPCs
+// or opening Realtime channels, keeping the production CSP strict.
+export function hasSupabaseBackend(url?: string, key?: string): boolean {
+  return Boolean(url?.trim() && key?.trim());
+}
+
+export const isSupabaseConfigured = hasSupabaseBackend(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
 const effectiveSupabaseUrl = SUPABASE_URL || "http://127.0.0.1:54321";
 const effectiveSupabaseKey = SUPABASE_PUBLISHABLE_KEY || "local-runtime-placeholder-key";
 

@@ -22,7 +22,6 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { exportAsWord, exportAsCSV } from "@/lib/exportUtils";
 
 export interface Artifact {
   id: string;
@@ -117,6 +116,7 @@ export function ArtifactPanel({
     try {
       if (artifact.type === "table") {
         // Export as CSV with proper column parsing
+        const { exportAsCSV } = await import("@/lib/exportUtils");
         exportAsCSV(artifact.content, safeName);
         toast.success(`Downloaded ${safeName}.csv`);
         return;
@@ -124,6 +124,7 @@ export function ArtifactPanel({
       
       if (artifact.type === "document" || artifact.type === "report") {
         // Export as Word (.docx)
+        const { exportAsWord } = await import("@/lib/exportUtils");
         await exportAsWord(artifact.content, artifact.title, safeName);
         toast.success(`Downloaded ${safeName}.docx`);
         return;

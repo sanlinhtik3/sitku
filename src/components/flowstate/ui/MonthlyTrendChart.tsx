@@ -1,16 +1,16 @@
 import { memo } from "react";
 import {
-  LineChart,
+  ComposedChart,
   Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/flowstate/solarIcons";
+import { FuiChartLegend, FuiWidget } from "@/design-system/fui";
 
 interface MonthlyData {
   month: string;
@@ -28,7 +28,7 @@ interface MonthlyTrendChartProps {
 const CustomTooltip = ({ active, payload, label, currency }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-popover/95 backdrop-blur-md border border-border/50 rounded-lg p-3 shadow-xl">
+      <div className="flowstate-chart-tooltip">
         <p className="font-medium text-sm mb-2">{label}</p>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-2 text-xs">
@@ -59,16 +59,18 @@ export const MonthlyTrendChart = memo(({
     if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
     return value.toString();
   };
+  const avgIncome = data.length ? Math.round(data.reduce((sum, item) => sum + item.income, 0) / data.length) : 0;
+  const avgExpense = data.length ? Math.round(data.reduce((sum, item) => sum + item.expense, 0) / data.length) : 0;
+  const symbol = currency === "THB" ? "฿" : currency === "USD" ? "$" : currency === "MMK" ? "Ks" : currency;
 
   return (
-    <div className={cn(
-      "rounded-xl border border-border/50 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden",
-      compact ? "p-3" : "p-4"
-    )}>
-      <h3 className={cn("font-semibold text-foreground mb-3", compact ? "text-sm" : "text-base")}>
-        Monthly Trend
-      </h3>
-
+    <FuiWidget
+      className={cn("flowstate-glass flowstate-monthly-trend", compact && "flowstate-widget-compact")}
+      eyebrow="Six-month signal"
+      title="Monthly trend"
+      description={`Average income ${symbol}${avgIncome.toLocaleString()} · expense ${symbol}${avgExpense.toLocaleString()}`}
+      action={<FuiChartLegend items={[{ label: "Income", color: "var(--bb-positive)" }, { label: "Expense", color: "var(--bb-negative)" }]} />}
+    >
       {isLoading ? (
         <div className={cn(
           "flex items-center justify-center",
@@ -84,78 +86,51 @@ export const MonthlyTrendChart = memo(({
           No data available
         </div>
       ) : (
-        <div className={cn(compact ? "h-[140px]" : "h-[200px]")}>
+        <div className={cn("flowstate-trend-canvas", compact && "!h-[140px]")}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+            <ComposedChart data={data} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="hsl(var(--border))"
-                opacity={0.3}
+                strokeDasharray="2 5"
+                stroke="var(--fui-chart-grid, var(--bb-border))"
+                vertical={false}
               />
               <XAxis
                 dataKey="month"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                axisLine={{ stroke: "hsl(var(--border))" }}
+                tick={{ fill: "var(--bb-text-4)", fontSize: 10 }}
+                axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                axisLine={{ stroke: "hsl(var(--border))" }}
+                tick={{ fill: "var(--bb-text-4)", fontSize: 10 }}
+                axisLine={false}
                 tickLine={false}
                 tickFormatter={formatYAxis}
                 width={45}
               />
-              <Tooltip content={<CustomTooltip currency={currency} />} />
-              <Legend
-                wrapperStyle={{ fontSize: "11px" }}
-                iconType="circle"
-                iconSize={8}
-              />
+              <Tooltip content={<CustomTooltip currency={symbol} />} />
               <Line
                 type="monotone"
                 dataKey="income"
-                stroke="#22C55E"
-                strokeWidth={2.5}
-                dot={{ fill: "#22C55E", strokeWidth: 0, r: 3 }}
+                stroke="var(--bb-positive)"
+                strokeWidth={2.2}
+                dot={false}
                 activeDot={{ r: 5, strokeWidth: 0 }}
                 name="Income"
               />
               <Line
                 type="monotone"
                 dataKey="expense"
-                stroke="#EF4444"
-                strokeWidth={2.5}
-                dot={{ fill: "#EF4444", strokeWidth: 0, r: 3 }}
+                stroke="var(--bb-negative)"
+                strokeWidth={2}
+                dot={false}
                 activeDot={{ r: 5, strokeWidth: 0 }}
                 name="Expenses"
               />
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       )}
-
-      {/* Summary below chart */}
-      {!isLoading && data.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-border/30 grid grid-cols-2 gap-4">
-          <div className="text-center">
-            <span className="text-xs text-muted-foreground">Avg Income</span>
-            <p className="font-semibold text-emerald-500 text-sm">
-              {currency} {Math.round(
-                data.reduce((sum, d) => sum + d.income, 0) / data.length
-              ).toLocaleString()}
-            </p>
-          </div>
-          <div className="text-center">
-            <span className="text-xs text-muted-foreground">Avg Expense</span>
-            <p className="font-semibold text-rose-500 text-sm">
-              {currency} {Math.round(
-                data.reduce((sum, d) => sum + d.expense, 0) / data.length
-              ).toLocaleString()}
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
+    </FuiWidget>
   );
 });
 

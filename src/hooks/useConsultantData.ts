@@ -240,6 +240,7 @@ export function useConsultantWeeklyAnalysis(range: DateRange) {
       }));
 
       const baselinePosts = ((baselinePostsRes.data ?? []) as any[]).map((p) => ({
+        platform: p.agentic_channels?.platform ?? "other",
         views: Number(p.views || 0),
         reach: Number(p.reach || 0),
         engagement: Number(p.likes || 0) + Number(p.comments || 0) + Number(p.shares || 0) + Number(p.saves || 0),
@@ -278,6 +279,29 @@ export function useConsultantWeeklyAnalysis(range: DateRange) {
         .sort((a, b) => a.views - b.views)
         .slice(0, 5);
 
+      const platformTotals = (posts: Array<{ platform: string; views: number; engagement: number }>) => {
+        const map = new Map<string, { platform: string; views: number; engagement: number }>();
+        posts.forEach((post) => {
+          const row = map.get(post.platform) ?? { platform: post.platform, views: 0, engagement: 0 };
+          row.views += post.views;
+          row.engagement += post.engagement;
+          map.set(post.platform, row);
+        });
+        return map;
+      };
+      const currentPlatform = platformTotals(currentPosts);
+      const baselinePlatform = platformTotals(baselinePosts);
+      const platformMix = Array.from(currentPlatform.values())
+        .map((row) => {
+          const previous = baselinePlatform.get(row.platform);
+          return {
+            ...row,
+            previous_views: previous?.views ?? 0,
+            views_delta_pct: pctChange(row.views, previous?.views ?? 0),
+          };
+        })
+        .sort((a, b) => b.views - a.views);
+
       const dailyMap = new Map<string, {
         date: string;
         views: number;
@@ -294,6 +318,8 @@ export function useConsultantWeeklyAnalysis(range: DateRange) {
         }
         return dailyMap.get(date)!;
       };
+
+      eachDayInRange(range).forEach(ensureDay);
 
       currentPosts.forEach((p) => {
         const day = ensureDay(p.posted_at);
@@ -348,6 +374,7 @@ export function useConsultantWeeklyAnalysis(range: DateRange) {
         topPosts,
         bestPost,
         lowSignalPosts,
+        platformMix,
         daily,
         peakDay,
         targets: {

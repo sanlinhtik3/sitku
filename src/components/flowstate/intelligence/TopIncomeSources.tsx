@@ -3,7 +3,7 @@
 // right-aligned amount) so finance and consultant feel like siblings.
 
 import { Card } from "@/components/ui/card";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp } from "@/components/flowstate/solarIcons";
 import { cn } from "@/lib/utils";
 import type { TopIncomeSourceRow } from "@/hooks/useFlowStateIncomeIntelligence";
 

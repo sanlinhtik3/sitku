@@ -7,6 +7,7 @@ import type { ConsultantRangePreset } from "@/hooks/useConsultantData";
 
 const PRESETS: { id: ConsultantRangePreset; label: string }[] = [
   { id: "today",        label: "Today" },
+  { id: "yesterday",    label: "Yesterday" },
   { id: "this_week",    label: "Week" },
   { id: "this_month",   label: "Month" },
   { id: "last_28_days", label: "28D" },

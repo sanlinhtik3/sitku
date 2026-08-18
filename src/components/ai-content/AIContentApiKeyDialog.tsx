@@ -23,7 +23,8 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
+import { geminiKey as localGeminiKeyStore } from "@/features/jarvis";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -39,6 +40,7 @@ type ProviderTab = 'gemini' | 'claude' | 'openrouter' | 'xai';
 
 // Gemini Models
 const GEMINI_MODELS = [
+  { id: "gemini-3.6-flash", name: "⚡ Gemini 3.6 Flash", description: "အသစ်ဆုံး + အမြန်ဆုံး agentic model", tier: "flash", isNew: true },
   { id: "gemini-3.5-flash", name: "🚀 Gemini 3.5 Flash", description: "stable + မြန်ဆန်သော agentic model", tier: "flash", isNew: true },
   { id: "gemini-3-flash-preview", name: "🚀 Gemini 3 Flash", description: "အသစ်ဆုံး + အမြန်ဆုံး", tier: "flash", isNew: true },
   { id: "gemini-3.1-pro-preview", name: "🧠 Gemini 3.1 Pro", description: "အသစ်ဆုံး reasoning + token efficient", tier: "pro", isNew: true },
@@ -201,6 +203,14 @@ export const AIContentApiKeyDialog = memo(({
   }, [activeProvider]);
 
   const fetchKeyStatus = async () => {
+    const localKey = localGeminiKeyStore.get();
+    if (localKey) {
+      setHasExistingGeminiKey(true);
+      setGeminiKey('••••••••••••••••••••••••••••••••••••••••');
+    }
+
+    if (!isSupabaseConfigured || !userId) return;
+
     try {
       const [geminiResult, claudeResult, settingsResult, openrouterResult, xaiResult] = await Promise.all([
         supabase.rpc('check_user_has_gemini_api_key', { p_user_id: userId }),
@@ -210,8 +220,10 @@ export const AIContentApiKeyDialog = memo(({
         supabase.rpc('check_user_api_key_exists', { p_user_id: userId, p_provider: 'xai' }),
       ]);
 
-      setHasExistingGeminiKey(!!geminiResult.data);
-      setGeminiKey(geminiResult.data ? '••••••••••••••••••••••••••••••••••••••••' : '');
+      if (geminiResult.data) {
+        setHasExistingGeminiKey(true);
+        setGeminiKey('••••••••••••••••••••••••••••••••••••••••');
+      }
 
       setHasExistingClaudeKey(!!claudeResult.data);
       setClaudeKey(claudeResult.data ? '••••••••••••••••••••••••••••••••••••••••' : '');
@@ -230,15 +242,8 @@ export const AIContentApiKeyDialog = memo(({
           setSelectedGeminiModel(model);
         }
       }
-    } catch (error) {
-      setHasExistingGeminiKey(false);
-      setGeminiKey('');
-      setHasExistingClaudeKey(false);
-      setClaudeKey('');
-      setHasExistingOpenrouterKey(false);
-      setOpenrouterKey('');
-      setHasExistingXaiKey(false);
-      setXaiKey('');
+    } catch {
+      // Local fallback keys already populated above
     }
   };
 
@@ -261,41 +266,48 @@ export const AIContentApiKeyDialog = memo(({
     }
 
     setLoading(true);
-    try {
-      if (activeProvider === 'openrouter' || activeProvider === 'xai') {
-        // Save to user_api_keys table
-        const { data: existing } = await supabase
-          .from('user_api_keys')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('provider', activeProvider)
-          .maybeSingle();
+    let savedLocally = false;
 
-        if (existing) {
-          const { error } = await supabase
+    try {
+      if (activeProvider === 'gemini') {
+        await localGeminiKeyStore.set(ks.key);
+        savedLocally = true;
+      }
+
+      if (isSupabaseConfigured && userId) {
+        if (activeProvider === 'openrouter' || activeProvider === 'xai') {
+          const { data: existing } = await supabase
             .from('user_api_keys')
-            .update({ api_key_encrypted: ks.key, updated_at: new Date().toISOString() })
-            .eq('id', existing.id);
-          if (error) throw error;
+            .select('id')
+            .eq('user_id', userId)
+            .eq('provider', activeProvider)
+            .maybeSingle();
+
+          if (existing) {
+            const { error } = await supabase
+              .from('user_api_keys')
+              .update({ api_key_encrypted: ks.key, updated_at: new Date().toISOString() })
+              .eq('id', existing.id);
+            if (error) throw error;
+          } else {
+            const { error } = await supabase
+              .from('user_api_keys')
+              .insert({ user_id: userId, provider: activeProvider, api_key_encrypted: ks.key });
+            if (error) throw error;
+          }
         } else {
+          const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+          if (activeProvider === 'gemini') {
+            updateData.gemini_api_key = ks.key;
+            updateData.gemini_model = selectedGeminiModel;
+          } else {
+            updateData.personal_anthropic_key = ks.key;
+          }
           const { error } = await supabase
-            .from('user_api_keys')
-            .insert({ user_id: userId, provider: activeProvider, api_key_encrypted: ks.key });
+            .from('ai_user_settings')
+            .upsert({ user_id: userId, ...updateData }, { onConflict: 'user_id' });
           if (error) throw error;
         }
-      } else {
-        // Gemini/Claude save to ai_user_settings
-        const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
-        if (activeProvider === 'gemini') {
-          updateData.gemini_api_key = ks.key;
-          updateData.gemini_model = selectedGeminiModel;
-        } else {
-          updateData.personal_anthropic_key = ks.key;
-        }
-        const { error } = await supabase
-          .from('ai_user_settings')
-          .upsert({ user_id: userId, ...updateData }, { onConflict: 'user_id' });
-        if (error) throw error;
       }
 
       toast.success(`✅ ${providerCfg.label} API Key saved!`);
@@ -305,7 +317,13 @@ export const AIContentApiKeyDialog = memo(({
       queryClient.invalidateQueries({ queryKey: ["ai-usage-analytics"] });
       onKeyUpdated?.();
     } catch (error: any) {
-      toast.error("Failed to save: " + error.message);
+      if (savedLocally) {
+        toast.success(`✅ ${providerCfg.label} API Key saved locally!`);
+        ks.setHasKey(true);
+        onKeyUpdated?.();
+      } else {
+        toast.error("Failed to save: " + (error.message || String(error)));
+      }
     } finally {
       setLoading(false);
     }
@@ -314,26 +332,32 @@ export const AIContentApiKeyDialog = memo(({
   const handleDelete = async () => {
     setLoading(true);
     try {
-      if (activeProvider === 'openrouter' || activeProvider === 'xai') {
-        const { error } = await supabase
-          .from('user_api_keys')
-          .delete()
-          .eq('user_id', userId)
-          .eq('provider', activeProvider);
-        if (error) throw error;
-      } else {
-        const updateData: Record<string, any> = {};
-        if (activeProvider === 'gemini') {
-          updateData.gemini_api_key = null;
-          updateData.gemini_model = 'gemini-3.5-flash';
+      if (activeProvider === 'gemini') {
+        await localGeminiKeyStore.set('');
+      }
+
+      if (isSupabaseConfigured && userId) {
+        if (activeProvider === 'openrouter' || activeProvider === 'xai') {
+          const { error } = await supabase
+            .from('user_api_keys')
+            .delete()
+            .eq('user_id', userId)
+            .eq('provider', activeProvider);
+          if (error) throw error;
         } else {
-          updateData.personal_anthropic_key = null;
+          const updateData: Record<string, any> = {};
+          if (activeProvider === 'gemini') {
+            updateData.gemini_api_key = null;
+            updateData.gemini_model = 'gemini-3.5-flash';
+          } else {
+            updateData.personal_anthropic_key = null;
+          }
+          const { error } = await supabase
+            .from('ai_user_settings')
+            .update(updateData)
+            .eq('user_id', userId);
+          if (error) throw error;
         }
-        const { error } = await supabase
-          .from('ai_user_settings')
-          .update(updateData)
-          .eq('user_id', userId);
-        if (error) throw error;
       }
 
       toast.success(`${providerCfg.label} API Key deleted`);
@@ -344,8 +368,12 @@ export const AIContentApiKeyDialog = memo(({
       queryClient.invalidateQueries({ queryKey: ["user-ai-settings"] });
       queryClient.invalidateQueries({ queryKey: ["ai-usage-analytics"] });
       onKeyUpdated?.();
-    } catch (error: any) {
-      toast.error("Failed to delete API key");
+    } catch {
+      ks.setKey('');
+      ks.setHasKey(false);
+      setTestSuccess(null);
+      toast.success(`${providerCfg.label} API Key deleted locally`);
+      onKeyUpdated?.();
     } finally {
       setLoading(false);
     }
@@ -368,24 +396,51 @@ export const AIContentApiKeyDialog = memo(({
         xai: selectedXaiModel,
       };
 
-      const { data, error: invokeError } = await supabase.functions.invoke("verify-api-key", {
-        body: {
-          provider: activeProvider,
-          key: ks.key,
-          model: modelByProvider[activeProvider],
-        },
-      });
+      let isOk = false;
+      let errorMsg = "";
 
-      if (invokeError) throw invokeError;
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error: invokeError } = await supabase.functions.invoke("verify-api-key", {
+            body: {
+              provider: activeProvider,
+              key: ks.key,
+              model: modelByProvider[activeProvider],
+            },
+          });
 
-      if (data?.ok) {
+          if (!invokeError && data) {
+            isOk = !!data.ok;
+            errorMsg = data.error || `Invalid ${providerCfg.label} API Key`;
+          }
+        } catch {
+          // Fall back below
+        }
+      }
+
+      // Direct verification fallback for Gemini API key when offline or Edge Function is unreachable
+      if (!isOk && activeProvider === 'gemini') {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(ks.key)}`);
+          if (res.ok) {
+            isOk = true;
+          } else {
+            const errJson = await res.json().catch(() => ({}));
+            errorMsg = errJson?.error?.message || "Invalid Gemini API Key";
+          }
+        } catch (fetchErr: any) {
+          errorMsg = fetchErr.message || "Failed to reach Gemini API";
+        }
+      }
+
+      if (isOk) {
         setTestSuccess(true);
         toast.success(`✅ ${providerCfg.label} API Key valid!`);
       } else {
         setTestSuccess(false);
-        toast.error(data?.error || `Invalid ${providerCfg.label} API Key`);
+        toast.error(errorMsg || `Invalid ${providerCfg.label} API Key`);
       }
-    } catch (error) {
+    } catch {
       setTestSuccess(false);
       toast.error("Network error - check your connection");
     } finally {

@@ -19,11 +19,14 @@ export interface ChromeClusterProps {
   skillsOpen: boolean;
   settingsOpen: boolean;
   agentOpen: boolean;
+  signalsOpen: boolean;
   onToggleSidebar: () => void;
   onSetEditorMode: (mode: EditorMode) => void;
   onOpenSkills: () => void;
   onOpenSettings: () => void;
   onToggleAgent: () => void;
+  onOpenSignals: () => void;
+  signalsAvailable?: boolean;
   showSkillsButton?: boolean;
   showPanelButton?: boolean;
   chromeButtonClass?: string;
@@ -32,9 +35,9 @@ export interface ChromeClusterProps {
 }
 
 const BTN_CLASS =
-  "h-[34px] w-[34px] rounded-[11px] bg-transparent text-[#9b9b9d] hover:bg-[#1a1a1c] hover:text-[#ededed] transition-colors duration-[140ms] shrink-0 flex items-center justify-center border-none cursor-pointer";
+  "bb-native-control h-[34px] w-[34px] rounded-[var(--bb-radius-control)] bg-transparent text-[var(--bb-text-3)] hover:bg-[var(--bb-bg-3)] hover:text-[var(--bb-text-1)] transition-[color,background-color,box-shadow,transform] duration-[140ms] shrink-0 flex items-center justify-center border-none cursor-pointer";
 const ACTIVE_BTN_CLASS =
-  "bg-[rgba(255,255,255,0.10)] text-[#f2f2f2] shadow-[inset_0_0_0_0.5px_rgba(255,255,255,0.12)]";
+  "bg-[var(--bb-bg-3)] text-[var(--bb-text-1)] shadow-[inset_0_0_0_0.5px_var(--bb-border)]";
 
 export const ChromeCluster = memo(function ChromeCluster({
   sidebarOpen,
@@ -42,11 +45,14 @@ export const ChromeCluster = memo(function ChromeCluster({
   skillsOpen,
   settingsOpen,
   agentOpen,
+  signalsOpen,
   onToggleSidebar,
   onSetEditorMode,
   onOpenSkills,
   onOpenSettings,
   onToggleAgent,
+  onOpenSignals,
+  signalsAvailable = false,
   showSkillsButton = false,
   showPanelButton = false,
   interactiveRegion,
@@ -76,14 +82,14 @@ export const ChromeCluster = memo(function ChromeCluster({
       </button>
 
       {/* Segmented Edit/Read Control */}
-      <div className="flex items-center gap-[2px] bg-[rgba(255,255,255,0.05)] rounded-[11px] p-[2px] mx-[2px] shrink-0">
+      <div className="flex items-center gap-[2px] bg-[rgba(255,255,255,0.05)] rounded-[var(--bb-radius-control)] p-[2px] mx-[2px] shrink-0">
         <button
           type="button"
           title="Editing view"
           className={cn(
-            "h-[30px] w-[34px] rounded-[9px] flex items-center justify-center text-[#9b9b9d] hover:text-[#c8c8c8] transition-all duration-[130ms] border-none cursor-pointer",
+            "bb-native-control h-[30px] w-[34px] rounded-[var(--bb-radius-control)] flex items-center justify-center text-[var(--bb-text-3)] hover:text-[var(--bb-text-1)] transition-[color,background-color,box-shadow,transform] duration-[130ms] border-none cursor-pointer",
             editorMode === "edit"
-              ? "bg-[rgba(255,255,255,0.11)] text-[#f2f2f2] shadow-[0_1px_3px_rgba(0,0,0,0.4),_inset_0_0_0_0.5px_rgba(255,255,255,0.10)]"
+              ? "bg-[var(--bb-bg-3)] text-[var(--bb-text-1)] shadow-[0_1px_3px_rgba(0,0,0,0.25),_inset_0_0_0_0.5px_var(--bb-border)]"
               : ""
           )}
           onClick={() => onSetEditorMode("edit")}
@@ -94,9 +100,9 @@ export const ChromeCluster = memo(function ChromeCluster({
           type="button"
           title="Reading view"
           className={cn(
-            "h-[30px] w-[34px] rounded-[9px] flex items-center justify-center text-[#9b9b9d] hover:text-[#c8c8c8] transition-all duration-[130ms] border-none cursor-pointer",
+            "bb-native-control h-[30px] w-[34px] rounded-[var(--bb-radius-control)] flex items-center justify-center text-[var(--bb-text-3)] hover:text-[var(--bb-text-1)] transition-[color,background-color,box-shadow,transform] duration-[130ms] border-none cursor-pointer",
             editorMode === "preview"
-              ? "bg-[rgba(255,255,255,0.11)] text-[#f2f2f2] shadow-[0_1px_3px_rgba(0,0,0,0.4),_inset_0_0_0_0.5px_rgba(255,255,255,0.10)]"
+              ? "bg-[var(--bb-bg-3)] text-[var(--bb-text-1)] shadow-[0_1px_3px_rgba(0,0,0,0.25),_inset_0_0_0_0.5px_var(--bb-border)]"
               : ""
           )}
           onClick={() => onSetEditorMode("preview")}
@@ -104,6 +110,21 @@ export const ChromeCluster = memo(function ChromeCluster({
           <Book className="h-[15px] w-[15px] shrink-0" />
         </button>
       </div>
+
+      <button
+        type="button"
+        title={signalsOpen ? "Close content signals" : "Open content signals"}
+        aria-label={signalsOpen ? "Close content signals" : "Open content signals"}
+        disabled={!signalsAvailable}
+        className={cn(
+          BTN_CLASS,
+          signalsOpen && ACTIVE_BTN_CLASS,
+          !signalsAvailable && "cursor-not-allowed opacity-40",
+        )}
+        onClick={onOpenSignals}
+      >
+        <MagicStick3 className="h-[16px] w-[16px] shrink-0" />
+      </button>
 
       {/* Skills button — opt-in via Settings (hidden by default) */}
       {showSkillsButton && (
@@ -139,4 +160,3 @@ export const ChromeCluster = memo(function ChromeCluster({
     </div>
   );
 });
-

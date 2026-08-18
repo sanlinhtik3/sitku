@@ -24,6 +24,7 @@ import { ensurePersistentStorage } from "@/lib/storageDurability";
 // What lives IN RAM (small, fixed): no content. This is the difference between
 // 1M notes taking ~5GB vs ~120MB. Content is fetched lazily from IndexedDB.
 export interface NoteMeta {
+  ctimeMs?: number;
   mtimeMs: number;
   contentHash?: string;
   title?: string; // derived once at write time, cached so list() never re-parses content
@@ -66,6 +67,22 @@ const LEGACY_BACKUP = `${LEGACY_PREFIX}notes.backup`;
 // localStorage-fallback keys (used only when IndexedDB is unavailable).
 const LS_NOTES = `${LEGACY_PREFIX}notes`;
 const LS_FOLDERS = `${LEGACY_PREFIX}folders`;
+const LS_HISTORY = `${LEGACY_PREFIX}history`;
+
+interface RecoveryJournal extends Partial<NoteRecord> {
+  path: string;
+  content: string;
+  backend?: "browser" | "fsa";
+  expectedHash?: string;
+  vaultName?: string;
+}
+
+interface LocalHistoryRecord {
+  id: number;
+  path: string;
+  content: string;
+  mtimeMs: number;
+}
 
 type Backend = "idb" | "localStorage";
 
@@ -118,6 +135,7 @@ class NoteStore {
   private externalListeners = new Set<(paths: string[]) => void>();
   // Per-note throttle for version snapshots (path → last snapshot epoch ms).
   private lastSnapshotAt = new Map<string, number>();
+  private fallbackVersionSequence = 0;
   // Full records staged by replaceAll() so persistAll() can write content to
   // disk in one transaction (the cache only holds meta). Cleared after use.
   private pendingFullRecords: Map<string, NoteRecord> | null = null;
@@ -145,6 +163,31 @@ class NoteStore {
       console.warn("[noteStore] IndexedDB unavailable; using localStorage fallback", error);
       this.backend = "localStorage";
       this.hydrateFromLocalStorage();
+    }
+
+    // Pillar 3: Zero-Data-Loss Durability Guarantee. Restore any note buffered during crash/unload.
+    try {
+      const recoveryRaw = localStorage.getItem("beebot.emergency_recovery");
+      if (recoveryRaw) {
+        const rec = JSON.parse(recoveryRaw) as RecoveryJournal;
+        const current = rec?.path ? this.cache.get(rec.path) : undefined;
+        const conflict = Boolean(rec.expectedHash && current?.contentHash && rec.expectedHash !== current.contentHash);
+        if ((!rec.backend || rec.backend === "browser") && rec.path && typeof rec.content === "string" && !conflict) {
+          console.warn("[Pillar 3] Restoring emergency note from crash/unload:", rec.path);
+          const record: NoteRecord = {
+            content: rec.content,
+            ctimeMs: rec.ctimeMs,
+            mtimeMs: rec.mtimeMs || Date.now(),
+            contentHash: rec.contentHash,
+            title: rec.title,
+          };
+          this.cache.set(rec.path, { mtimeMs: record.mtimeMs, ctimeMs: record.ctimeMs, contentHash: record.contentHash, title: record.title });
+          await this.persistNote(rec.path, record);
+          localStorage.removeItem("beebot.emergency_recovery");
+        }
+      }
+    } catch (err) {
+      console.error("[Pillar 3] Recovery restore failed", err);
     }
 
     // Cross-tab sync (best-effort — unsupported in some embedded webviews).
@@ -218,8 +261,9 @@ class NoteStore {
       req.onsuccess = () => {
         const cursor = req.result;
         if (!cursor) { resolve(); return; }
-        const row = cursor.value as { path: string; mtimeMs: number; contentHash?: string; title?: string };
+        const row = cursor.value as { path: string; ctimeMs?: number; mtimeMs: number; contentHash?: string; title?: string };
         this.cache.set(row.path, {
+          ctimeMs: row.ctimeMs,
           mtimeMs: row.mtimeMs,
           contentHash: row.contentHash,
           title: row.title,
@@ -240,6 +284,7 @@ class NoteStore {
       // via getContent(). Same RAM discipline as the IndexedDB path.
       for (const [path, record] of Object.entries(obj)) {
         this.cache.set(path, {
+          ctimeMs: record.ctimeMs,
           mtimeMs: record.mtimeMs,
           contentHash: record.contentHash,
           title: record.title,
@@ -282,6 +327,7 @@ class NoteStore {
       // hold only meta in the cache.
       for (const [path, record] of Object.entries(legacyNotes)) {
         this.cache.set(path, {
+          ctimeMs: record.ctimeMs,
           mtimeMs: record.mtimeMs,
           contentHash: record.contentHash,
           title: record.title,
@@ -361,7 +407,7 @@ class NoteStore {
     if (this.backend === "idb" && this.db) {
       const req = this.db.transaction(NOTES_STORE, "readonly").objectStore(NOTES_STORE).getAll() as IDBRequest<Array<{ path: string } & NoteRecord>>;
       const rows = await promisify(req);
-      return rows.map(({ path, content, mtimeMs, contentHash, title }) => [path, { content, mtimeMs, contentHash, title }]);
+      return rows.map(({ path, content, ctimeMs, mtimeMs, contentHash, title }) => [path, { content, ctimeMs, mtimeMs, contentHash, title }]);
     }
     try {
       const obj = JSON.parse(localStorage.getItem(LS_NOTES) || "{}") as Record<string, NoteRecord>;
@@ -374,14 +420,41 @@ class NoteStore {
   }
 
   // ── Mutations (cache updates immediately; persistence is queued) ────────────
+  /** Pillar 3: Zero-Data-Loss synchronous emergency save on beforeunload / visibilitychange. */
+  emergencySaveSync(path: string, record: NoteRecord, expectedHash?: string): void {
+    this.cache.set(path, { ctimeMs: record.ctimeMs, mtimeMs: record.mtimeMs, contentHash: record.contentHash, title: record.title });
+    try {
+      const raw = localStorage.getItem(LS_NOTES);
+      const obj = raw ? (JSON.parse(raw) as Record<string, NoteRecord>) : {};
+      obj[path] = record;
+      localStorage.setItem(LS_NOTES, JSON.stringify(obj));
+      localStorage.setItem("beebot.emergency_recovery", JSON.stringify({ backend: "browser", path, expectedHash, ...record }));
+    } catch (err) {
+      console.error("[noteStore] emergencySaveSync failed", err);
+    }
+    if (this.backend === "idb" && this.db) {
+      try {
+        const tx = this.db.transaction(NOTES_STORE, "readwrite");
+        tx.objectStore(NOTES_STORE).put({ path, ...record });
+      } catch { /* IDB might abort during unload, localStorage caught it */ }
+    }
+    this.broadcast([path]);
+  }
+
   /** Write a note (full content) to disk. Only meta is held in the cache. */
   putNote(path: string, record: NoteRecord): Promise<void> {
-    this.cache.set(path, { mtimeMs: record.mtimeMs, contentHash: record.contentHash, title: record.title });
+    this.cache.set(path, { ctimeMs: record.ctimeMs, mtimeMs: record.mtimeMs, contentHash: record.contentHash, title: record.title });
     return this.enqueue(async () => {
       await this.persistNote(path, record);
       await this.maybeSnapshot(path, record);
       this.broadcast([path]);
     });
+  }
+
+  /** Persist a bounded version snapshot without creating or changing a note. */
+  async snapshotVersion(path: string, record: NoteRecord): Promise<void> {
+    await this.ready();
+    await this.maybeSnapshot(path, record);
   }
 
   /** Update a note's metadata without touching content (e.g. title-only edit). */
@@ -486,13 +559,21 @@ class NoteStore {
   /** Snapshot the saved content, throttled per-note + capped, so editing churn
       can't flood the store. Best-effort: a failed snapshot never blocks a save. */
   private async maybeSnapshot(path: string, record: NoteRecord) {
-    if (this.backend !== "idb" || !this.db) return;
     const now = record.mtimeMs || Date.now();
     const last = this.lastSnapshotAt.get(path) ?? 0;
     if (now - last < SNAPSHOT_THROTTLE_MS) return;
     if (!record.content.trim()) return; // don't snapshot an empty document
     this.lastSnapshotAt.set(path, now);
     try {
+      if (this.backend !== "idb" || !this.db) {
+        const rows = JSON.parse(localStorage.getItem(LS_HISTORY) || "[]") as LocalHistoryRecord[];
+        const id = Date.now() * 1000 + (this.fallbackVersionSequence++ % 1000);
+        rows.push({ id, path, content: record.content, mtimeMs: now });
+        const forPath = rows.filter((row) => row.path === path).sort((a, b) => b.mtimeMs - a.mtimeMs);
+        const keepIds = new Set(forPath.slice(0, MAX_VERSIONS_PER_NOTE).map((row) => row.id));
+        localStorage.setItem(LS_HISTORY, JSON.stringify(rows.filter((row) => row.path !== path || keepIds.has(row.id))));
+        return;
+      }
       const tx = this.db.transaction(HISTORY_STORE, "readwrite");
       const store = tx.objectStore(HISTORY_STORE);
       store.add({ path, content: record.content, mtimeMs: now });
@@ -513,7 +594,15 @@ class NoteStore {
   /** Newest-first list of a note's saved versions (metadata only). */
   async listVersions(path: string): Promise<NoteVersion[]> {
     await this.ready();
-    if (this.backend !== "idb" || !this.db) return [];
+    if (this.backend !== "idb" || !this.db) {
+      try {
+        const rows = JSON.parse(localStorage.getItem(LS_HISTORY) || "[]") as LocalHistoryRecord[];
+        return rows
+          .filter((row) => row.path === path)
+          .map((row) => ({ id: row.id, path: row.path, mtimeMs: row.mtimeMs, size: row.content.length }))
+          .sort((a, b) => b.mtimeMs - a.mtimeMs);
+      } catch { return []; }
+    }
     try {
       const tx = this.db.transaction(HISTORY_STORE, "readonly");
       const rows = await promisify(
@@ -530,7 +619,12 @@ class NoteStore {
   /** Full content of a specific version. */
   async getVersionContent(id: number): Promise<string | null> {
     await this.ready();
-    if (this.backend !== "idb" || !this.db) return null;
+    if (this.backend !== "idb" || !this.db) {
+      try {
+        const rows = JSON.parse(localStorage.getItem(LS_HISTORY) || "[]") as LocalHistoryRecord[];
+        return rows.find((row) => row.id === id)?.content ?? null;
+      } catch { return null; }
+    }
     try {
       const tx = this.db.transaction(HISTORY_STORE, "readonly");
       const row = await promisify(tx.objectStore(HISTORY_STORE).get(id) as IDBRequest<{ content: string } | undefined>);
@@ -554,7 +648,17 @@ class NoteStore {
       tx.objectStore(NOTES_STORE).put({ path, ...record });
       await txDone(tx);
     } else {
-      this.flushLocalStorage();
+      try {
+        const records = (() => {
+          try { return JSON.parse(localStorage.getItem(LS_NOTES) || "{}") as Record<string, NoteRecord>; }
+          catch { return {}; }
+        })();
+        records[path] = record;
+        localStorage.setItem(LS_NOTES, JSON.stringify(records));
+        localStorage.setItem(LS_FOLDERS, JSON.stringify([...this.folderSet]));
+      } catch (error) {
+        console.error("[noteStore] localStorage note write failed", error);
+      }
     }
   }
 

@@ -49,6 +49,10 @@ function make(s: Spec): ThemePreset {
     "chart.3": s.charts[2],
     "chart.4": s.charts[3],
     "chart.5": s.charts[4],
+    "semantic.positive": "#10b981",
+    "semantic.negative": "#ef4444",
+    "semantic.warning": "#f59e0b",
+    "semantic.info": "#3b82f6",
   };
   return { name: s.name, type: s.type, flat: s.flat, shadow: s.shadow, colors };
 }

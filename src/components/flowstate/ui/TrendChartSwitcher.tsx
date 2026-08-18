@@ -2,7 +2,7 @@ import { useState, memo } from "react";
 import { Button } from "@/components/ui/button";
 import { MonthlyTrendChart } from "./MonthlyTrendChart";
 import { DailyTrendChart, DailyTrend } from "./DailyTrendChart";
-import { Calendar, CalendarDays } from "lucide-react";
+import { Calendar, CalendarDays } from "@/components/flowstate/solarIcons";
 import { cn } from "@/lib/utils";
 
 interface MonthlyData {

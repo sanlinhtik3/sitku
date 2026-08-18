@@ -6,4 +6,5 @@ export * from "./search";
 export * from "./settings";
 export * from "./skills";
 export * from "./tasks";
+export * from "./team";
 export * from "./vault";

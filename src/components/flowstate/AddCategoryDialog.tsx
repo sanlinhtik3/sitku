@@ -6,8 +6,9 @@ import { Label } from "@/components/ui/label";
 import { useMutation } from "@tanstack/react-query";
 import { financeStore } from "@/repositories/local/financeStore";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/flowstate/solarIcons";
 import { cn } from "@/lib/utils";
+import { CATEGORY_ICON_OPTIONS, CategoryIcon } from "./CategoryIcon";
 
 interface AddCategoryDialogProps {
   open: boolean;
@@ -16,25 +17,6 @@ interface AddCategoryDialogProps {
   userId: string;
   onSuccess: () => void;
 }
-
-const ICONS = [
-  { name: "Briefcase", emoji: "💼" },
-  { name: "ShoppingCart", emoji: "🛒" },
-  { name: "Utensils", emoji: "🍽️" },
-  { name: "Car", emoji: "🚗" },
-  { name: "Home", emoji: "🏠" },
-  { name: "Heart", emoji: "❤️" },
-  { name: "Gamepad2", emoji: "🎮" },
-  { name: "GraduationCap", emoji: "🎓" },
-  { name: "Plane", emoji: "✈️" },
-  { name: "Gift", emoji: "🎁" },
-  { name: "Wallet", emoji: "💰" },
-  { name: "CreditCard", emoji: "💳" },
-  { name: "Coffee", emoji: "☕" },
-  { name: "Music", emoji: "🎵" },
-  { name: "Book", emoji: "📚" },
-  { name: "Dumbbell", emoji: "🏋️" },
-];
 
 const COLORS = [
   "#3B82F6", // Blue
@@ -49,19 +31,28 @@ const COLORS = [
 
 export function AddCategoryDialog({ open, onOpenChange, type, userId, onSuccess }: AddCategoryDialogProps) {
   const [name, setName] = useState("");
-  const [selectedIcon, setSelectedIcon] = useState(ICONS[0].name);
+  const [nameMy, setNameMy] = useState("");
+  const [selectedIcon, setSelectedIcon] = useState<string>(CATEGORY_ICON_OPTIONS[0]);
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
 
   const addCategoryMutation = useMutation({
     mutationFn: async () => {
-      await financeStore.addCategory(userId, { name, icon: selectedIcon, color: selectedColor, type });
+      await financeStore.addCategory(userId, {
+        name,
+        name_my: nameMy.trim() || null,
+        icon: selectedIcon,
+        color: selectedColor,
+        type,
+        group: "Custom",
+      });
     },
     onSuccess: () => {
       toast.success("Category added");
       onSuccess();
       onOpenChange(false);
       setName("");
-      setSelectedIcon(ICONS[0].name);
+      setNameMy("");
+      setSelectedIcon(CATEGORY_ICON_OPTIONS[0]);
       setSelectedColor(COLORS[0]);
     },
     onError: () => {
@@ -80,7 +71,7 @@ export function AddCategoryDialog({ open, onOpenChange, type, userId, onSuccess 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="flowstate-entry-dialog sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
             Add {type === "income" ? "Income" : "Expense"} Category
@@ -98,23 +89,33 @@ export function AddCategoryDialog({ open, onOpenChange, type, userId, onSuccess 
             />
           </div>
 
+          <div className="space-y-2">
+            <Label>Myanmar name <span className="text-muted-foreground">(optional)</span></Label>
+            <Input
+              placeholder="ဥပမာ ကုန်စုံဝယ်ယူမှု"
+              value={nameMy}
+              onChange={(event) => setNameMy(event.target.value)}
+            />
+          </div>
+
           {/* Icon Selection */}
           <div className="space-y-2">
-            <Label>Icon</Label>
-            <div className="grid grid-cols-8 gap-2">
-              {ICONS.map((icon) => (
+            <Label>Solar icon</Label>
+            <div className="grid max-h-36 grid-cols-8 gap-2 overflow-y-auto pr-1">
+              {CATEGORY_ICON_OPTIONS.map((icon) => (
                 <button
-                  key={icon.name}
+                  key={icon}
                   type="button"
-                  onClick={() => setSelectedIcon(icon.name)}
+                  onClick={() => setSelectedIcon(icon)}
+                  aria-label={`Use ${icon} icon`}
                   className={cn(
-                    "h-10 w-10 rounded-lg flex items-center justify-center text-lg transition-all",
-                    selectedIcon === icon.name
+                    "flex h-10 w-10 items-center justify-center rounded-[var(--radius)] transition-colors",
+                    selectedIcon === icon
                       ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background"
                       : "bg-muted hover:bg-muted/80"
                   )}
                 >
-                  {icon.emoji}
+                  <CategoryIcon icon={icon} color={selectedIcon === icon ? "currentColor" : selectedColor} />
                 </button>
               ))}
             </div>
@@ -143,16 +144,16 @@ export function AddCategoryDialog({ open, onOpenChange, type, userId, onSuccess 
           </div>
 
           {/* Preview */}
-          <div className="p-3 rounded-lg bg-muted/50 flex items-center gap-3">
-            <div 
-              className="h-10 w-10 rounded-lg flex items-center justify-center text-lg"
+          <div className="flex items-center gap-3 rounded-[var(--radius)] bg-muted/50 p-3">
+            <CategoryIcon
+              icon={selectedIcon}
+              color={selectedColor}
+              containerClassName="h-10 w-10 rounded-[var(--radius)]"
               style={{ backgroundColor: `${selectedColor}20` }}
-            >
-              {ICONS.find(i => i.name === selectedIcon)?.emoji}
-            </div>
+            />
             <div>
               <p className="font-medium">{name || "Category Name"}</p>
-              <p className="text-xs text-muted-foreground capitalize">{type}</p>
+              <p className="text-xs text-muted-foreground">{nameMy || `Custom ${type}`}</p>
             </div>
           </div>
 

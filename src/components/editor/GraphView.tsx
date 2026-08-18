@@ -19,6 +19,8 @@ export interface GraphViewProps {
   onNodeClick: (path: string) => void;
   /** Theme override for canvas colors — falls back to data-bb-theme on <html>. */
   theme?: "dark" | "light";
+  /** Optional search repository to fetch graph data off-main-thread via Web Worker AST Engine. */
+  search?: { getGraphData?: () => Promise<{ nodes: { id: string; title: string; degree: number }[]; links: { source: string; target: string }[] }> };
 }
 
 type N = { id: string; title: string; degree: number; isActive: boolean };
@@ -41,7 +43,7 @@ function readTokens() {
   };
 }
 
-export const GraphView = memo(function GraphView({ notes, activePath, resolve, onNodeClick }: GraphViewProps) {
+export const GraphView = memo(function GraphView({ notes, activePath, resolve, onNodeClick, search }: GraphViewProps) {
   const ref = useRef<ForceGraphMethods<N, L> | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -59,9 +61,32 @@ export const GraphView = memo(function GraphView({ notes, activePath, resolve, o
     return () => ro.disconnect();
   }, []);
 
+  // ponytail: off-main-thread graph calculation via Web Worker AST Engine
+  const [workerGraph, setWorkerGraph] = useState<{ nodes: N[]; links: L[] } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (search?.getGraphData) {
+      search.getGraphData().then((data) => {
+        if (cancelled || !data) return;
+        const mappedNodes = data.nodes.map((n) => ({
+          id: n.id,
+          title: n.title || n.id,
+          degree: n.degree || 0,
+          isActive: n.id === activePath,
+        }));
+        setWorkerGraph({ nodes: mappedNodes, links: data.links });
+      }).catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [search, activePath, notes]);
+
   // Build the directed graph from wikilinks. Degree = in+out so popular hubs
   // get bigger nodes naturally without us tracking backlinks separately.
   const { nodes, links } = useMemo(() => {
+    if (workerGraph && workerGraph.nodes.length > 0) {
+      return workerGraph;
+    }
     const byPath = new Map<string, N>();
     for (const n of notes) {
       byPath.set(n.path, { id: n.path, title: n.title || n.path, degree: 0, isActive: n.path === activePath });
@@ -69,6 +94,7 @@ export const GraphView = memo(function GraphView({ notes, activePath, resolve, o
     const ls: L[] = [];
     for (const n of notes) {
       if (!n.content) continue;
+      const src = byPath.get(n.path);
       WIKILINK.lastIndex = 0;
       let m: RegExpExecArray | null;
       const seenThisNote = new Set<string>();
@@ -79,7 +105,6 @@ export const GraphView = memo(function GraphView({ notes, activePath, resolve, o
         if (seenThisNote.has(key)) continue;
         seenThisNote.add(key);
         ls.push({ source: n.path, target });
-        const src = byPath.get(n.path);
         const dst = byPath.get(target);
         if (src) src.degree += 1;
         if (dst) dst.degree += 1;

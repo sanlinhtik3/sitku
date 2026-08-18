@@ -4,31 +4,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, MemoryRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
-import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { BeeBotLayout } from "@/layouts/BeeBotLayout";
 import { RepositoryProvider } from "@/repositories/runtime/RepositoryProvider";
 import { isLocalRepositoryRuntime } from "@/repositories/runtime/runtimeMode";
 import { ensurePersistentStorage } from "@/lib/storageDurability";
-import { isMacDesktop, TRAFFIC_LIGHT_SAFE_ZONE, applyReduceEffects } from "@/lib/desktopChrome";
+import { isMacDesktop, TRAFFIC_LIGHT_SAFE_ZONE, applyReduceEffects, initializeNativeDesktopChrome } from "@/lib/desktopChrome";
 
-import { lazy, Suspense, memo, useEffect } from "react";
-
-// Stale-chunk recovery: reload page once to get fresh Vite manifest
-function lazyWithRetry(importFn: () => Promise<any>) {
-  return lazy(() =>
-    importFn().catch((error) => {
-      const key = 'chunk_reload';
-      const lastReload = sessionStorage.getItem(key);
-      const now = Date.now();
-      if (lastReload && now - parseInt(lastReload) < 10000) {
-        throw error;
-      }
-      sessionStorage.setItem(key, now.toString());
-      window.location.reload();
-      return new Promise(() => {});
-    })
-  );
-}
+import { Suspense, memo, useEffect } from "react";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
 // ─── Pages ─────────────────────────────────────────────────────
 const BeeBotPage = lazyWithRetry(() => import("./pages/BeeBotPage"));
@@ -63,7 +46,6 @@ const queryClient = new QueryClient({
 });
 
 const ThemeInitializer = memo(({ children }: { children: React.ReactNode }) => {
-  useThemeSettings();
   // Request durable storage early (best grant odds while the page is engaged), so
   // local data is exempt from browser eviction before any store lazy-loads.
   useEffect(() => { void ensurePersistentStorage(); }, []);
@@ -82,6 +64,10 @@ const ThemeInitializer = memo(({ children }: { children: React.ReactNode }) => {
   // Reduce-effects mode: kill stacked backdrop-blur (the GPU overheat cause). Default ON
   // on desktop, off on web; user-overridable in Settings. See desktopChrome.reduceEffects.
   useEffect(() => { applyReduceEffects(); }, []);
+
+  // Native shell state drives focus-aware chrome and keeps Electron's backing
+  // surface synchronized with live/custom themes (no launch or resize flash).
+  useEffect(() => initializeNativeDesktopChrome(), []);
 
   // Pause ALL CSS animations (mesh-drift gradient, "live" pings, spinners) whenever
   // the window is hidden or blurred. Zero visual change while you're using the app —

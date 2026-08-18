@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, lazy, useState, useEffect, useCallback } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -45,10 +45,13 @@ import {
 import { toast } from "sonner";
 import { IUCreditsWidget } from "./IUCreditsWidget";
 import { cn } from "@/lib/utils";
-import { UserProfileDialog } from "@/components/UserProfileDialog";
 import { AgentChatSession } from "@/hooks/useAgentChat";
 import { groupSessionsByDate } from "./session-utils";
 import { exportSessionAsMarkdown, exportSessionAsJSON } from "@/lib/exportConversation";
+
+const UserProfileDialog = lazy(() =>
+  import("@/components/UserProfileDialog").then((m) => ({ default: m.UserProfileDialog })),
+);
 
 type ExportRow = { role: string; content: string | null; created_at: string; is_error: boolean | null; attachments: unknown };
 const EXPORT_PAGE_SIZE = 1000;
@@ -434,7 +437,9 @@ export function ChatSessionSidebar({
         </div>
       </TooltipProvider>
       {profileOpen && (
-        <UserProfileDialog open={profileOpen} onOpenChange={handleCloseProfile} initialTab={profileTab as any} onTabChange={onProfileTabChange} />
+        <Suspense fallback={null}>
+          <UserProfileDialog open={profileOpen} onOpenChange={handleCloseProfile} initialTab={profileTab as any} onTabChange={onProfileTabChange} />
+        </Suspense>
       )}
     </>
     );
@@ -965,7 +970,9 @@ export function ChatSessionSidebar({
       </div>
 
       {profileOpen && (
-        <UserProfileDialog open={profileOpen} onOpenChange={handleCloseProfile} initialTab={profileTab as any} onTabChange={onProfileTabChange} />
+        <Suspense fallback={null}>
+          <UserProfileDialog open={profileOpen} onOpenChange={handleCloseProfile} initialTab={profileTab as any} onTabChange={onProfileTabChange} />
+        </Suspense>
       )}
 
     </div>

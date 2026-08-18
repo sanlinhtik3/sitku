@@ -59,12 +59,21 @@ interface ChatInputProps {
   onConnectorsTabChange?: (tab: "apps" | "custom-api") => void;
   placeholder?: string;
   promptSuggestions?: string[];
+  /** Isolates drafts between main chat, embedded assistants, threads, and memory chat. */
+  draftScope?: string;
+  /** Only the main composer should consume app-wide prefill requests. */
+  acceptGlobalPrefill?: boolean;
 }
 
 const MAX_MESSAGE_LENGTH = 100000;
 const ADMIN_MAX_MESSAGE_LENGTH = 800000;
 const SEND_DEBOUNCE_MS = 500;
 const MAX_CODE_FILE_SIZE = 500 * 1024;
+
+export function chatDraftStorageKey(scope = "main"): string {
+  const normalized = scope.trim() || "main";
+  return `sitku-draft:${normalized}`;
+}
 
 const CODE_FILE_EXTENSIONS: Record<string, string> = {
   js: 'javascript', mjs: 'javascript', cjs: 'javascript',
@@ -108,14 +117,30 @@ export function ChatInput({
   connectorsDialogOpen, onConnectorsDialogOpenChange,
   connectorsTab, onConnectorsTabChange,
   placeholder, promptSuggestions,
+  draftScope = "main",
+  acceptGlobalPrefill = false,
 }: ChatInputProps) {
   const { agentRuntime } = useRepositories();
+  const draftStorageKey = chatDraftStorageKey(draftScope);
   const [message, setMessage] = useState(() => {
     try {
-      const prefill = sessionStorage.getItem("sitku_prefill") || sessionStorage.getItem("pututu_prefill") || sessionStorage.getItem("beebot_prefill");
-      if (prefill) { sessionStorage.removeItem("sitku_prefill"); sessionStorage.removeItem("pututu_prefill"); sessionStorage.removeItem("beebot_prefill"); return prefill; }
+      if (acceptGlobalPrefill) {
+        const prefill = sessionStorage.getItem("sitku_prefill") || sessionStorage.getItem("pututu_prefill") || sessionStorage.getItem("beebot_prefill");
+        if (prefill) {
+          sessionStorage.removeItem("sitku_prefill");
+          sessionStorage.removeItem("pututu_prefill");
+          sessionStorage.removeItem("beebot_prefill");
+          return prefill;
+        }
+      }
+      const scopedDraft = sessionStorage.getItem(draftStorageKey);
+      if (scopedDraft) return scopedDraft;
+      // One-time compatibility read for the old unscoped main-chat draft.
+      if (draftScope === "main") {
+        return sessionStorage.getItem("sitku-draft") || sessionStorage.getItem("pututu-draft") || sessionStorage.getItem("beebot-draft") || "";
+      }
     } catch {}
-    return sessionStorage.getItem("sitku-draft") || sessionStorage.getItem("pututu-draft") || sessionStorage.getItem("beebot-draft") || "";
+    return "";
   });
   const [isSending, setIsSending] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
@@ -167,12 +192,18 @@ export function ChatInput({
 
   // Persist draft to sessionStorage
   useEffect(() => {
-    if (message) sessionStorage.setItem("sitku-draft", message);
-    else sessionStorage.removeItem("sitku-draft");
-  }, [message]);
+    if (message) sessionStorage.setItem(draftStorageKey, message);
+    else sessionStorage.removeItem(draftStorageKey);
+    if (draftScope === "main") {
+      sessionStorage.removeItem("sitku-draft");
+      sessionStorage.removeItem("pututu-draft");
+      sessionStorage.removeItem("beebot-draft");
+    }
+  }, [draftScope, draftStorageKey, message]);
 
   // External prefill (e.g. AgentConsultant suggested prompts)
   useEffect(() => {
+    if (!acceptGlobalPrefill) return;
     const onPrefill = (e: Event) => {
       const detail = (e as CustomEvent<string>).detail;
       if (typeof detail === "string" && detail.length > 0) {
@@ -182,7 +213,7 @@ export function ChatInput({
     };
     window.addEventListener("beebot:prefill", onPrefill as EventListener);
     return () => window.removeEventListener("beebot:prefill", onPrefill as EventListener);
-  }, []);
+  }, [acceptGlobalPrefill]);
 
   // Virtual keyboard handling — translate the composer above the keyboard.
   const isMobile = useIsMobile();
@@ -218,7 +249,7 @@ export function ChatInput({
         );
       }
       setMessage("");
-      sessionStorage.removeItem("sitku-draft");
+      sessionStorage.removeItem(draftStorageKey);
       clearImages();
       setCodeAttachments([]);
       await onSend(content, attachments);
@@ -228,7 +259,7 @@ export function ChatInput({
     } finally {
       setIsSending(false);
     }
-  }, [message, images, codeAttachments, isStreaming, disabled, isSending, isCoolingDown, onSend, imageToBase64, clearImages]);
+  }, [message, images, codeAttachments, isStreaming, disabled, isSending, isCoolingDown, onSend, imageToBase64, clearImages, draftStorageKey]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Esc while streaming = stop the response (Claude.ai / ChatGPT pattern)
@@ -554,9 +585,13 @@ export function ChatInput({
               disabled={disabled || isSending || isCoolingDown || isListening}
               inputMode="text"
               enterKeyHint="send"
-              autoCapitalize="sentences"
-              autoCorrect="on"
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
               spellCheck={true}
+              data-gramm="false"
+              data-gramm_editor="false"
+              data-enable-grammarly="false"
               className={cn(
                 "w-full bg-transparent border-none outline-none resize-none",
                 "text-base sm:text-base text-[#f4f4f4]",

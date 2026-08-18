@@ -2,11 +2,10 @@ import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 import { VitePWA } from 'vite-plugin-pwa';
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   base: process.env.VITE_DESKTOP_BUILD === "true" ? "./" : "/",
   server: {
     // Strict loopback bind. The old "::" (= IPv6 0.0.0.0, all interfaces) let
@@ -21,19 +20,18 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       output: {
-        // ponytail: keep almost everything in ONE `vendor` chunk — the old fine-grained
-        // splits cycled (recharts/d3 → "ca" TDZ; supabase ↔ react → "f is not a function").
-        // The ONLY safe carve-outs are heavy, ROUTE-SPECIFIC libraries pulled out WITH all
-        // their own deps into a single self-contained chunk (so there's no cross-chunk cycle),
-        // and only used by lazy routes — so they leave the eager first-paint bundle:
-        //   • charts = recharts + its d3 family  → only the CFO/finance overlays (lazy)
-        //   • editor = codemirror + lezer        → only the markdown editor (lazy)
-        // Each imports `vendor` one-directionally; vendor never imports them back → no cycle.
+        // Keep the tightly-coupled CodeMirror/Lezer graph together. Everything else
+        // follows Rollup's import graph so route-only libraries (Mermaid, Shiki,
+        // Cytoscape, export/PDF and analytics packages) stay behind their existing
+        // dynamic-import boundaries. A catch-all `vendor` chunk made every route
+        // download the whole application dependency graph (~12 MB minified).
+        //
+        // Do not add hand-written Recharts/D3 sub-chunks here: that older split
+        // crossed circular initialization boundaries and caused TDZ startup errors.
         manualChunks: (id) => {
           if (!id.includes('node_modules')) return undefined;
-          if (/[\\/]node_modules[\\/](recharts|victory-vendor|d3-[a-z]+|internmap|delaunator|robust-predicates)[\\/]/.test(id)) return 'charts';
           if (/[\\/]node_modules[\\/](@codemirror|@lezer|@marijn|crelt|style-mod|w3c-keyname)[\\/]/.test(id)) return 'editor';
-          return 'vendor';
+          return undefined;
         },
       },
     },
@@ -41,13 +39,14 @@ export default defineConfig(({ mode }) => ({
     sourcemap: 'hidden',
     // Target modern browsers for smaller bundles
     target: 'es2020',
-    // Chunk size warnings
-    chunkSizeWarningLimit: 500,
+    // The remaining large lazy chunk is the shared syntax engine. Language
+    // grammars are now explicit, on-demand imports, so keep the guardrail tight
+    // enough to catch an accidental full Shiki registry or vendor bundle.
+    chunkSizeWarningLimit: 675,
   },
   plugins: [
     tailwindcss(),
     react(),
-    mode === "development" && componentTagger(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['pwa-192x192.png', 'pwa-512x512.png', 'robots.txt'],

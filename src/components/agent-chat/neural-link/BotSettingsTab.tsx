@@ -16,13 +16,14 @@ import { AIContentApiKeyDialog } from "@/components/ai-content/AIContentApiKeyDi
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { SecureLinkingSection } from "./SecureLinkingSection";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { BotSettings, ChannelIdentity } from "./types";
 
 const GEMINI_MODELS = [
+  { id: "gemini-3.6-flash", name: "⚡ Gemini 3.6 Flash", description: "အသစ်ဆုံး + အမြန်ဆုံး agentic model", tier: "flash", isNew: true },
   { id: "gemini-3.5-flash", name: "🚀 Gemini 3.5 Flash", description: "stable + မြန်ဆန်သော agentic model", tier: "flash", isNew: true },
   { id: "gemini-3-flash-preview", name: "🚀 Gemini 3 Flash", description: "အသစ်ဆုံး + အမြန်ဆုံး", tier: "flash", isNew: true },
   { id: "gemini-3.1-pro-preview", name: "🧠 Gemini 3.1 Pro", description: "အသစ်ဆုံး reasoning + token efficient", tier: "pro", isNew: true },
@@ -125,17 +126,40 @@ export function BotSettingsTab({ bot, onSave, isSaving, hasSharedKey, sharedKeyM
     if (!geminiKey.trim()) { toast.error("Enter API key first"); return; }
     setTesting(true); setTestSuccess(null); setTestError(null);
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke("verify-api-key", {
-        body: { provider: "gemini", key: geminiKey, model: separateModel },
-      });
-      if (invokeError) throw invokeError;
-      if (data?.ok) {
+      let isOk = false;
+      let errorMsg = "";
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error: invokeError } = await supabase.functions.invoke("verify-api-key", {
+            body: { provider: "gemini", key: geminiKey, model: separateModel },
+          });
+          if (!invokeError && data) {
+            isOk = !!data.ok;
+            errorMsg = data.error || "API Key test failed";
+          }
+        } catch {}
+      }
+
+      if (!isOk) {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(geminiKey.trim())}`);
+          if (res.ok) isOk = true;
+          else {
+            const errJson = await res.json().catch(() => ({}));
+            errorMsg = errJson?.error?.message || "Invalid Gemini API Key";
+          }
+        } catch (fetchErr: any) {
+          errorMsg = fetchErr.message || "Network error";
+        }
+      }
+
+      if (isOk) {
         setTestSuccess(true);
         toast.success(`✅ API Key valid!`);
       } else {
         setTestSuccess(false);
-        setTestError((data?.error || "Invalid key").substring(0, 60));
-        toast.error(data?.error || "API Key test failed");
+        setTestError(errorMsg.substring(0, 60));
+        toast.error(errorMsg);
       }
     } catch { setTestSuccess(false); setTestError("Network error"); toast.error("Network error"); }
     finally { setTesting(false); }

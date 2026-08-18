@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { getModelDisplayName } from "@/lib/ai-models";
@@ -144,7 +144,7 @@ export const useIntelligenceStatus = (userId?: string) => {
         modelUsedToday: rawData.model_used_today || null,
       } as IntelligenceStatus;
     },
-    enabled: !!userId,
+    enabled: isSupabaseConfigured && !!userId,
     staleTime: 30 * 1000, // 30 seconds
     // PERF: No refetchInterval — Realtime subscription handles updates
   });
@@ -172,6 +172,7 @@ export const useIntelligenceStatus = (userId?: string) => {
         enabledGeminiModels: rawData.enabled_gemini_models || ['gemini-3.5-flash','gemini-3.1-flash-lite','gemini-2.5-flash-lite','gemini-2.5-flash','gemini-2.5-pro','gemini-3-flash-preview','gemini-3.1-pro-preview'],
       } as SystemAPIKeyStatus;
     },
+    enabled: isSupabaseConfigured,
     staleTime: 30 * 1000, // 30 seconds
     // PERF: No refetchInterval — Realtime subscription handles updates
   });
@@ -184,6 +185,10 @@ export const useIntelligenceStatus = (userId?: string) => {
       if (provider) {
         localStorage.setItem('apex_preferred_provider', provider);
       }
+
+      // Local-first/Electron uses the saved preference directly. The legacy
+      // cloud entitlement endpoint only exists when a real backend is configured.
+      if (!isSupabaseConfigured) return null;
       
       const { data, error } = await supabase.rpc('set_user_preferred_model', {
         p_model_id: modelId,
@@ -232,7 +237,7 @@ export const useIntelligenceStatus = (userId?: string) => {
 
   // Real-time subscription for usage updates
   useEffect(() => {
-    if (!userId) return;
+    if (!isSupabaseConfigured || !userId) return;
 
     const channel = supabase
       .channel(`intelligence:${userId}`)

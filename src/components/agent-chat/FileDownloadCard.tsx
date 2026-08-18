@@ -4,7 +4,6 @@ import { FileDown, FileSpreadsheet, FileText, Code2, Download, Check, Eye } from
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { exportAsWord, exportAsCSV, exportAsMarkdown, exportAsJSON } from "@/lib/exportUtils";
 import type { Artifact } from "./ArtifactPanel";
 
 interface FileDownloadCardProps {
@@ -49,6 +48,7 @@ export const FileDownloadCard = memo(function FileDownloadCard({ fileType, conte
   const handleDownload = async () => {
     try {
       const safeName = filename.replace(/\s+/g, "_").toLowerCase().replace(/\.[^.]+$/, "");
+      const { exportAsWord, exportAsCSV, exportAsMarkdown, exportAsJSON } = await import("@/lib/exportUtils");
       switch (fileType) {
         case "csv": exportAsCSV(content, safeName); break;
         case "docx": await exportAsWord(content, filename, safeName); break;

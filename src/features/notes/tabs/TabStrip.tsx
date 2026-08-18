@@ -36,8 +36,11 @@ import { cn } from "@/lib/utils";
 import type { CSSProperties } from "react";
 import type { NoteFile, VaultEntry } from "@/repositories/contracts/notes";
 
-function titleFromPath(notePath: string) {
-  return notePath.split("/").pop()?.replace(/\.md$/i, "") || notePath;
+function titleFromPath(notePath?: string | null) {
+  if (!notePath || typeof notePath !== "string") return "Untitled";
+  const parts = notePath.split("/");
+  const filename = parts[parts.length - 1];
+  return (filename ? filename.replace(/\.md$/i, "") : notePath) || "Untitled";
 }
 
 export interface TabActions {
@@ -105,7 +108,7 @@ export const TabStrip = memo(function TabStrip({
                       }
                     }}
                     className={cn(
-                      "group relative h-[34px] max-w-[220px] min-w-[132px] flex items-center gap-[6px] px-2.5 text-[12.5px] rounded-[12px] transition-all duration-[150ms] cursor-pointer tracking-[-0.01em]",
+                      "bb-native-control group relative h-[34px] max-w-[220px] min-w-[132px] flex items-center gap-[6px] px-2.5 text-[12.5px] rounded-[var(--bb-radius-control)] transition-[color,background-color,box-shadow,transform] duration-[150ms] cursor-pointer tracking-[-0.01em]",
                       isActiveTab
                         ? "bg-[rgba(255,255,255,0.09)] text-[#f2f2f2] shadow-[0_1px_3px_rgba(0,0,0,0.35),_inset_0_0_0_0.5px_rgba(255,255,255,0.10)]"
                         : "text-[#9b9b9d] hover:bg-[rgba(255,255,255,0.045)] hover:text-[#ededed]",
@@ -162,7 +165,7 @@ export const TabStrip = memo(function TabStrip({
               <button
                 type="button"
                 title="New tab"
-                className="h-[34px] w-[34px] shrink-0 rounded-[12px] bg-transparent text-[#9b9b9d] hover:bg-[#1a1a1c] hover:text-[#ededed] data-[state=open]:bg-[#1a1a1c] data-[state=open]:text-[#ededed] transition-colors duration-[140ms] flex items-center justify-center border-none cursor-pointer"
+                className="bb-native-control h-[34px] w-[34px] shrink-0 rounded-[var(--bb-radius-control)] bg-transparent text-[var(--bb-text-3)] hover:bg-[var(--bb-bg-3)] hover:text-[var(--bb-text-1)] data-[state=open]:bg-[var(--bb-bg-3)] data-[state=open]:text-[var(--bb-text-1)] transition-[color,background-color,transform] duration-[140ms] flex items-center justify-center border-none cursor-pointer"
               >
                 <AddSquare className="h-[17px] w-[17px] shrink-0" />
               </button>

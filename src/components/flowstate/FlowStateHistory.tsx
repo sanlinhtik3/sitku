@@ -11,13 +11,14 @@ import {
   TrendingDown,
   BarChart3,
   Loader2
-} from "lucide-react";
+} from "@/components/flowstate/solarIcons";
 import { useQuery } from "@tanstack/react-query";
 import { financeStore } from "@/repositories/local/financeStore";
 import { format, subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 import { CurrencyDisplay } from "./ui/CurrencyDisplay";
 import { HistoryComparisonChart } from "./ui/HistoryComparisonChart";
 import { cn } from "@/lib/utils";
+import { transactionMonthKey } from "@/lib/flowstate/financeDates";
 
 interface FlowStateHistoryProps {
   userId: string;
@@ -81,7 +82,7 @@ export function FlowStateHistory({ userId, currency }: FlowStateHistoryProps) {
       };
       
       data?.forEach(tx => {
-        const monthKey = tx.transaction_date.substring(0, 7);
+        const monthKey = transactionMonthKey(tx.transaction_date);
         if (monthlyData[monthKey]) {
           const txCurrency = tx.currency || "USD";
           const convertedAmount = convertToDisplay(Number(tx.amount), txCurrency);
@@ -163,7 +164,7 @@ export function FlowStateHistory({ userId, currency }: FlowStateHistoryProps) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flowstate-history-view space-y-[14px]">
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -215,7 +216,7 @@ export function FlowStateHistory({ userId, currency }: FlowStateHistoryProps) {
       </div>
 
       {/* Summary Card */}
-      <Card className="p-4 border-border/50 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl">
+      <Card className="flowstate-history-summary">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold">
             {viewMode === "monthly" ? `${MONTHS[selectedMonth]} ${selectedYear}` : `Year ${selectedYear}`}
@@ -275,9 +276,9 @@ export function FlowStateHistory({ userId, currency }: FlowStateHistoryProps) {
       <HistoryComparisonChart data={historicalData} currency={currency} isLoading={isLoading} />
 
       {/* Monthly Breakdown */}
-      <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+      <Card className="flowstate-history-breakdown">
         <h4 className="font-medium text-sm mb-3">Monthly Breakdown</h4>
-        <div className="space-y-2 max-h-64 overflow-y-auto">
+        <div className="flowstate-history-rows">
           {isLoading ? (
             <div className="flex items-center justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

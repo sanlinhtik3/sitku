@@ -16,6 +16,7 @@ import {
   localDateString,
   type DateRange,
 } from "@/hooks/useConsultantData";
+import { transactionDateKey } from "@/lib/flowstate/financeDates";
 
 const UNATTRIBUTED = "Unattributed";
 
@@ -202,7 +203,7 @@ export function useFlowStateIncomeIntelligence(
       const dayMap = new Map<string, IncomeDayRow>();
       for (const d of eachDayInRange(range)) dayMap.set(d, { date: d, income: 0, expense: 0, net: 0 });
       for (const t of rows) {
-        const d = t.transaction_date?.slice(0, 10);
+        const d = transactionDateKey(t.transaction_date);
         if (!d || !dayMap.has(d)) continue;
         const row = dayMap.get(d)!;
         const v = toPrimary(Number(t.amount || 0), t.currency || primaryCurrency);
@@ -230,7 +231,7 @@ export function useFlowStateIncomeIntelligence(
       // ── todayEntries (today's income rows for the "Today" widget) ──────
       const todayStr = localDateString();
       const todayEntries: TodayIncomeEntryRow[] = incomeRows
-        .filter((t) => t.transaction_date?.slice(0, 10) === todayStr)
+        .filter((t) => transactionDateKey(t.transaction_date) === todayStr)
         .sort((a, c) => (c.created_at || "").localeCompare(a.created_at || ""))
         .map((t) => ({
           id: t.id,

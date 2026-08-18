@@ -3,7 +3,7 @@
 // Mirrors the consultant's `DailyPostList` rhythm.
 
 import { Card } from "@/components/ui/card";
-import { Sun, ArrowDownLeft } from "lucide-react";
+import { Sun, ArrowDownLeft } from "@/components/flowstate/solarIcons";
 import type { TodayIncomeEntryRow } from "@/hooks/useFlowStateIncomeIntelligence";
 
 const fmt = (n: number, cur: string) => {

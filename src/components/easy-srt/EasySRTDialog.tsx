@@ -200,7 +200,7 @@ export function EasySRTDialog({ open, onOpenChange, userId }: EasySRTDialogProps
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!inset-0 !translate-x-0 !translate-y-0 !max-w-[calc(100vw-20px)] !w-[calc(100vw-20px)] !h-[calc(100dvh-20px-env(safe-area-inset-top,0px))] !max-h-[calc(100dvh-20px-env(safe-area-inset-top,0px))] flex flex-col !p-0 !gap-0 !rounded-[16px] border-border/30 overflow-hidden bg-background/95 backdrop-blur-2xl [&>button:last-child]:hidden m-[10px] mt-[max(10px,env(safe-area-inset-top,10px))] pb-[env(safe-area-inset-bottom)]">
+      <DialogContent layout="fullscreen" className="!inset-0 !translate-x-0 !translate-y-0 !max-w-[calc(100vw-20px)] !w-[calc(100vw-20px)] !h-[calc(100dvh-20px-env(safe-area-inset-top,0px))] !max-h-[calc(100dvh-20px-env(safe-area-inset-top,0px))] flex flex-col !p-0 !gap-0 !rounded-[16px] border-border/30 overflow-hidden bg-background/95 backdrop-blur-2xl [&>button:last-child]:hidden m-[10px] mt-[max(10px,env(safe-area-inset-top,10px))] pb-[env(safe-area-inset-bottom)]">
         {/* Accessibility */}
         <VisuallyHidden.Root>
           <DialogTitle>Easy Burmese SRT</DialogTitle>

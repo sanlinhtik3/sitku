@@ -14,7 +14,7 @@ import {
   Brain,
   Globe2,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -165,20 +165,43 @@ export function ProviderKeyCard({ provider, userId }: ProviderKeyCardProps) {
     if (!value || value.includes("•")) { toast.error("Enter a key first"); return; }
     setTesting(true); setTestResult(null);
     try {
-      const { data, error } = await supabase.functions.invoke("verify-api-key", {
-        body: {
-          provider,
-          key: value,
-          model: provider === "gemini"
-            ? "gemini-3.5-flash"
-            : provider === "openrouter"
-              ? "openai/gpt-4o-mini"
-              : "claude-haiku-4-5-20251001",
-        },
-      });
-      if (error) throw error;
-      if (data?.ok) { setTestResult("ok"); toast.success("Key valid"); }
-      else { setTestResult("fail"); toast.error(data?.error || "Invalid key"); }
+      let isOk = false;
+      let errorMsg = "";
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error } = await supabase.functions.invoke("verify-api-key", {
+            body: {
+              provider,
+              key: value,
+              model: provider === "gemini"
+                ? "gemini-3.5-flash"
+                : provider === "openrouter"
+                  ? "openai/gpt-4o-mini"
+                  : "claude-haiku-4-5-20251001",
+            },
+          });
+          if (!error && data) {
+            isOk = !!data.ok;
+            errorMsg = data.error || "Invalid key";
+          }
+        } catch {}
+      }
+
+      if (!isOk && provider === "gemini") {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(value.trim())}`);
+          if (res.ok) isOk = true;
+          else {
+            const errJson = await res.json().catch(() => ({}));
+            errorMsg = errJson?.error?.message || "Invalid Gemini API Key";
+          }
+        } catch (fetchErr: any) {
+          errorMsg = fetchErr.message || "Network error";
+        }
+      }
+
+      if (isOk) { setTestResult("ok"); toast.success("Key valid"); }
+      else { setTestResult("fail"); toast.error(errorMsg || "Invalid key"); }
     } catch {
       setTestResult("fail"); toast.error("Network error");
     } finally { setTesting(false); }

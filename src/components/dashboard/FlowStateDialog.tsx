@@ -1,34 +1,89 @@
-import { useState, useMemo, useRef, useEffect, lazy, Suspense, type CSSProperties } from "react";
+import { lazy, Suspense, useState, useMemo, useRef, useEffect, type CSSProperties } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Wallet, Plus, RefreshCw, TrendingUp, TrendingDown, CreditCard, PiggyBank, Loader2, X } from "lucide-react";
+import { Wallet, Plus, TrendingUp, TrendingDown, CreditCard, PiggyBank, Loader2, Repeat2, Search, X, Minus } from "@/components/flowstate/solarIcons";
+import {
+  Widget as SolarWidget,
+  List as SolarList,
+  Wallet as SolarWallet,
+  CalendarMark as SolarCalendarMark,
+  RefreshCircle as SolarRefreshCircle,
+  Card as SolarCard,
+  MagicStick3 as SolarMagicStick3,
+  History as SolarHistory,
+  Settings as SolarSettings,
+} from "@solar-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { financeStore } from "@/repositories/local/financeStore";
-import { useFlowState, useFlowStateMonthlyTrend, useFlowStateDailyTrend, type Transaction } from "@/hooks/useFlowState";
+import { useFlowState, useFlowStateMonthlyTrend, type Transaction } from "@/hooks/useFlowState";
 import { StatCard } from "@/components/flowstate/ui/StatCard";
 import { SpendingDonutChart } from "@/components/flowstate/ui/SpendingDonutChart";
-import { TrendChartSwitcher } from "@/components/flowstate/ui/TrendChartSwitcher";
+import { MonthlyTrendChart } from "@/components/flowstate/ui/MonthlyTrendChart";
 import { VirtualTransactionList } from "@/components/flowstate/ui/VirtualTransactionList";
 import { CurrencyDisplay } from "@/components/flowstate/ui/CurrencyDisplay";
 import { SpendingCalendar } from "@/components/flowstate/ui/SpendingCalendar";
-import { AddTransactionDialog } from "@/components/flowstate/AddTransactionDialog";
-import { EditTransactionDialog } from "@/components/flowstate/EditTransactionDialog";
-import { FlowStateAccounts } from "@/components/flowstate/FlowStateAccounts";
-import { FlowStateSubscriptions } from "@/components/flowstate/FlowStateSubscriptions";
-import { FlowStateAIInsights } from "@/components/flowstate/FlowStateAIInsights";
-import { FlowStateCFO } from "@/components/flowstate/FlowStateCFO";
+import { HistoryComparisonChart } from "@/components/flowstate/ui/HistoryComparisonChart";
+import { TransactionRow } from "@/components/flowstate/ui/TransactionRow";
 import { useNavigate } from "react-router-dom";
-import { FlowStateHistory } from "@/components/flowstate/FlowStateHistory";
-import { FlowStateManage } from "@/components/flowstate/FlowStateManage";
 import { FinanceRangeSelector } from "@/components/flowstate/intelligence/FinanceRangeSelector";
 import { FinancialGoalCard } from "@/components/flowstate/goal/FinancialGoalCard";
-import { useFlowStateSourceFlow } from "@/hooks/useFlowStateSourceFlow";
-import { consultantRangeForPreset, type ConsultantRangePreset } from "@/hooks/useConsultantData";
+import { type ConsultantRangePreset } from "@/hooks/useConsultantData";
 import { cn } from "@/lib/utils";
+import { format, subMonths } from "date-fns";
+import { FLOWSTATE_WIDGETS_CHANGED, readFlowStateWidgetVisibility, type FlowStateWidgetVisibility } from "@/lib/flowStateOverviewWidgets";
+import { FuiLabel, FuiMetric, FuiPanel, FuiStatus } from "@/design-system/fui";
 
-// Recharts (~499KB) — only pulled in when the Overview Source Flow chart renders.
-const SourceFlowChart = lazy(() => import("@/components/flowstate/intelligence/SourceFlowChart").then((m) => ({ default: m.SourceFlowChart })));
+const loadFlowStateAccounts = () => import("@/components/flowstate/FlowStateAccounts");
+const loadFlowStatePlan = () => import("@/components/flowstate/FlowStatePlan");
+const loadFlowStateSubscriptions = () => import("@/components/flowstate/FlowStateSubscriptions");
+const loadFlowStateAIInsights = () => import("@/components/flowstate/FlowStateAIInsights");
+const loadFlowStateCFO = () => import("@/components/flowstate/FlowStateCFO");
+const loadFlowStateHistory = () => import("@/components/flowstate/FlowStateHistory");
+const loadFlowStateManage = () => import("@/components/flowstate/FlowStateManage");
+
+const FlowStateAccounts = lazy(() => loadFlowStateAccounts().then((module) => ({ default: module.FlowStateAccounts })));
+const FlowStatePlan = lazy(() => loadFlowStatePlan().then((module) => ({ default: module.FlowStatePlan })));
+const FlowStateSubscriptions = lazy(() => loadFlowStateSubscriptions().then((module) => ({ default: module.FlowStateSubscriptions })));
+const FlowStateAIInsights = lazy(() => loadFlowStateAIInsights().then((module) => ({ default: module.FlowStateAIInsights })));
+const FlowStateCFO = lazy(() => loadFlowStateCFO().then((module) => ({ default: module.FlowStateCFO })));
+const FlowStateHistory = lazy(() => loadFlowStateHistory().then((module) => ({ default: module.FlowStateHistory })));
+const FlowStateManage = lazy(() => loadFlowStateManage().then((module) => ({ default: module.FlowStateManage })));
+const AddTransactionDialog = lazy(() => import("@/components/flowstate/AddTransactionDialog").then((module) => ({ default: module.AddTransactionDialog })));
+const EditTransactionDialog = lazy(() => import("@/components/flowstate/EditTransactionDialog").then((module) => ({ default: module.EditTransactionDialog })));
+
+const tabModuleLoaders: Partial<Record<string, () => Promise<unknown>>> = {
+  overview: loadFlowStateCFO,
+  plan: loadFlowStatePlan,
+  subscriptions: loadFlowStateSubscriptions,
+  accounts: loadFlowStateAccounts,
+  "ai-insights": loadFlowStateAIInsights,
+  history: loadFlowStateHistory,
+  manage: loadFlowStateManage,
+};
+
+function preloadFlowStateTab(tab: string) {
+  void tabModuleLoaders[tab]?.();
+}
+
+function FlowStateModuleFallback() {
+  return (
+    <div className="flex min-h-48 items-center justify-center" role="status" aria-label="Loading section">
+      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+
+const flowStateTabs = [
+  ["overview", "Overview", SolarWidget],
+  ["transactions", "Transactions", SolarList],
+  ["plan", "Plan", SolarCalendarMark],
+  ["subscriptions", "Subscriptions", SolarRefreshCircle],
+  ["accounts", "Accounts", SolarCard],
+  ["ai-insights", "AI Insights", SolarMagicStick3],
+  ["history", "History", SolarHistory],
+  ["manage", "Manage", SolarSettings],
+] as const;
 
 interface FlowStateDialogProps {
   open: boolean;
@@ -37,31 +92,24 @@ interface FlowStateDialogProps {
 }
 
 export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogProps) {
-  const [activeTab, setActiveTab] = useState("cfo");
+  const [activeTab, setActiveTab] = useState("overview");
 
-  // ponytail: auto-activate eco-mode to kill heavy GPU backdrop-blurs when full-screen modal opens
-  useEffect(() => {
-    if (open) {
-      document.documentElement.setAttribute("data-eco-mode", "true");
-      return () => document.documentElement.removeAttribute("data-eco-mode");
-    }
-  }, [open]);
   const navigate = useNavigate();
   const openInSitku = (prompt: string) => {
-    try { sessionStorage.setItem("sitku_prefill", prompt); } catch { }
+    try { sessionStorage.setItem("sitku_prefill", prompt); } catch { /* storage can be unavailable in private contexts */ }
     navigate("/sitku");
     onOpenChange(false);
   };
   const [addTransactionOpen, setAddTransactionOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [transactionQuery, setTransactionQuery] = useState("");
+  const [transactionFilter, setTransactionFilter] = useState<"all" | "income" | "expense">("all");
+  const [visibleWidgets, setVisibleWidgets] = useState<FlowStateWidgetVisibility>(readFlowStateWidgetVisibility);
   // Shared tabs scroller — the virtualized Transactions list scrolls against this.
   const tabScrollRef = useRef<HTMLDivElement>(null);
 
   // Overview "Source Flow" chart range — independent (Today / Week / Month / 28D / 90D).
-  const [flowRangePreset, setFlowRangePreset] = useState<ConsultantRangePreset>("this_week");
-  const flowRangeSel = useMemo(() => consultantRangeForPreset(flowRangePreset), [flowRangePreset]);
-
-
+  const [flowRangePreset, setFlowRangePreset] = useState<ConsultantRangePreset>("this_month");
   // Lightweight settings read just to learn primaryCurrency. Shares the SAME query
   // key as useFlowState's internal settings query → deduped, no extra IO. Previously
   // this was a SECOND full useFlowState(userId, "THB") call, which re-ran the entire
@@ -72,14 +120,17 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
     enabled: !!userId,
   });
   const primaryCurrency = settingsRow?.primary_currency || "THB";
-
-  // Source Flow data for the Overview chart (depends on primaryCurrency + the flow range).
-  const { data: sourceFlow } = useFlowStateSourceFlow(userId, flowRangeSel.range, primaryCurrency);
+  const periodSubtitle = useMemo(() => {
+    const now = new Date();
+    const previous = subMonths(now, 1);
+    const currentLabel = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(now);
+    const previousLabel = new Intl.DateTimeFormat(undefined, { month: "long" }).format(previous);
+    return `${currentLabel} · vs ${previousLabel} baseline · ${primaryCurrency} primary`;
+  }, [primaryCurrency]);
 
   const flowStateWithPrimary = useFlowState(userId, primaryCurrency);
 
   const { data: monthlyTrend = [], isLoading: trendLoading } = useFlowStateMonthlyTrend(userId, primaryCurrency);
-  const { data: dailyTrend = [], isLoading: dailyLoading } = useFlowStateDailyTrend(userId, primaryCurrency);
 
   const {
     stats,
@@ -109,6 +160,20 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
     updateSubscription,
     refetch,
   } = flowStateWithPrimary;
+
+  useEffect(() => {
+    const refreshFromVoice = () => { void refetch(); };
+    window.addEventListener("beebot:finance-changed", refreshFromVoice);
+    return () => window.removeEventListener("beebot:finance-changed", refreshFromVoice);
+  }, [refetch]);
+
+  useEffect(() => {
+    const syncWidgets = (event: Event) => {
+      setVisibleWidgets((event as CustomEvent<FlowStateWidgetVisibility>).detail || readFlowStateWidgetVisibility());
+    };
+    window.addEventListener(FLOWSTATE_WIDGETS_CHANGED, syncWidgets);
+    return () => window.removeEventListener(FLOWSTATE_WIDGETS_CHANGED, syncWidgets);
+  }, []);
 
 
   const handleAddTransaction = (data: {
@@ -147,48 +212,73 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
     return out;
   }, [transactions]);
 
+  const visibleTransactions = useMemo(() => {
+    const query = transactionQuery.trim().toLocaleLowerCase();
+    return transactions.filter((transaction) => {
+      if (transactionFilter !== "all" && transaction.type !== transactionFilter) return false;
+      if (!query) return true;
+      return [transaction.description, transaction.notes, transaction.source]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase().includes(query));
+    });
+  }, [transactionFilter, transactionQuery, transactions]);
+
+  const comparisonTrend = useMemo(() => monthlyTrend.map((month, index) => ({
+    month: format(subMonths(new Date(), monthlyTrend.length - 1 - index), "yyyy-MM"),
+    income: month.income,
+    expense: month.expense,
+    net: month.income - month.expense,
+  })), [monthlyTrend]);
+
+  const netState = stats.netBalance < 0 ? "loss" : stats.netBalance > 0 ? "profit" : "neutral";
+  const currentMonthLabel = format(new Date(), "MMM");
+  const previousMonthLabel = format(subMonths(new Date(), 1), "MMM");
+  const topIncomeSource = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const transaction of transactions) {
+      if (transaction.type !== "income") continue;
+      const label = transaction.source || transaction.category?.name || "Unattributed";
+      totals.set(label, (totals.get(label) || 0) + Number(transaction.amount));
+    }
+    return [...totals].sort((a, b) => b[1] - a[1])[0]?.[0];
+  }, [transactions]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!inset-0 !translate-x-0 !translate-y-0 !max-w-[calc(100vw-20px)] !w-[calc(100vw-20px)] !h-[calc(100dvh-20px-env(safe-area-inset-top,0px))] !max-h-[calc(100dvh-20px-env(safe-area-inset-top,0px))] flex flex-col !p-0 !gap-0 !rounded-[16px] border-border/30 overflow-hidden bg-background/95 backdrop-blur-2xl [&>button:last-child]:hidden m-[10px] mt-[max(10px,env(safe-area-inset-top,10px))] pb-[env(safe-area-inset-bottom)]">
+      <DialogContent layout="fullscreen" className="flowstate-app !inset-0 !translate-x-0 !translate-y-0 !max-w-none !w-screen !h-dvh !max-h-dvh flex flex-col !p-0 !gap-0 !rounded-none !border-0 overflow-hidden [&>button:last-child]:hidden">
         {/* Header */}
         <DialogHeader
-          className="px-3 py-2.5 pb-0 shrink-0 border-b border-border/30"
+          className="flowstate-header native-titlebar-safe native-titlebar-drag shrink-0"
           // Reserve the macOS traffic-light gutter (mac desktop only; 0 elsewhere) so the
           // OS lights don't overlap the wallet icon / title. Drag the window by this bar.
-          style={{ paddingLeft: "calc(0.75rem + var(--titlebar-safe))", WebkitAppRegion: "drag" } as CSSProperties}
+          style={{ WebkitAppRegion: "drag" } as CSSProperties}
         >
-          <div className="flex items-center justify-between gap-3" style={{ WebkitAppRegion: "no-drag" } as CSSProperties}>
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/30 ring-2 ring-primary/20">
-                <Wallet className="h-5 w-5 text-primary-foreground" />
+              <div className="flowstate-wallet-badge">
+                <Wallet className="h-[19px] w-[19px]" />
               </div>
               <div>
-                <DialogTitle className="text-lg sm:text-xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">FlowState</DialogTitle>
-                <p className="text-[10px] sm:text-xs text-muted-foreground">Personal Finance Manager</p>
+                <DialogTitle className="flowstate-title">Personal CFO</DialogTitle>
+                <p className="flowstate-subtitle">{periodSubtitle}</p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 rounded-xl border border-border/50 bg-muted/30 hover:bg-muted/50 hover:border-primary/30 transition-all"
-                disabled={isLoading}
-                onClick={() => refetch()}
-              >
-                <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
-              </Button>
+            <div className="flowstate-header-actions native-titlebar-interactive">
+              <FinanceRangeSelector value={flowRangePreset} onChange={setFlowRangePreset} />
               <Button
                 size="sm"
-                className="gap-1.5 rounded-xl bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25 transition-all hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.98]"
+                className="flowstate-add-button gap-1.5"
                 onClick={() => setAddTransactionOpen(true)}
               >
                 <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline font-medium">Add</span>
+                <span className="hidden sm:inline font-medium">Add entry</span>
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 rounded-xl border border-border/50 bg-muted/30 hover:bg-destructive/20 hover:border-destructive/30 hover:text-destructive transition-all"
+                className="flowstate-close h-9 w-9"
+                aria-label="Close Personal CFO"
+                title="Close Personal CFO"
                 onClick={() => onOpenChange(false)}
               >
                 <X className="h-4 w-4" />
@@ -197,28 +287,37 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
           </div>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {/* Net Balance Hero */}
-          <div className="px-3 py-2 lg:pr-0">
-            <div className="h-full rounded-2xl border border-border/30 bg-gradient-to-br from-card via-card/80 to-muted/30 backdrop-blur-xl p-3 relative overflow-hidden group hover:border-primary/20 transition-all duration-300">
-              {/* Decorative elements */}
-              <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-2xl opacity-50" />
+        <nav className="flowstate-primary-tabs" aria-label="Personal CFO sections">
+          {flowStateTabs.map(([value, label, Icon]) => (
+            <button
+              key={value}
+              type="button"
+              data-active={activeTab === value}
+              onPointerEnter={() => preloadFlowStateTab(value)}
+              onFocus={() => preloadFlowStateTab(value)}
+              onClick={() => setActiveTab(value)}
+            >
+              <Icon className="h-3.5 w-3.5" weight="Linear" aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
 
-              <div className="flex items-center justify-between relative">
+        <div className={cn("flowstate-hero grid gap-[14px]", !visibleWidgets.net && "flowstate-hero-no-net")}>
+          {/* Net Balance Hero */}
+          {visibleWidgets.net && <div>
+            <FuiPanel tone="primary" className="flowstate-glass flowstate-net-card h-full" data-balance={netState}>
+              <div className="flowstate-net-heading">
                 <div>
-                  <p className="text-[10px] sm:text-xs text-muted-foreground font-medium mb-1.5 uppercase tracking-wider">
-                    Net This Month
-                  </p>
-                  <p className={cn(
-                    "text-3xl sm:text-4xl font-bold tracking-tight",
-                    stats.netBalance >= 0 ? "text-emerald-500" : "text-rose-500"
-                  )}>
+                  <FuiLabel className="flowstate-eyebrow mb-2 block">
+                    Net · This Month
+                  </FuiLabel>
+                  <FuiMetric className="flowstate-net-value block">
                     {primaryCurrency === "USD" ? "$" : primaryCurrency === "MMK" ? "" : "฿"}
                     {stats.netBalance < 0 ? "-" : ""}
                     {Math.abs(stats.netBalanceMulti[primaryCurrency as keyof typeof stats.netBalanceMulti] ?? stats.netBalanceMulti.THB).toLocaleString(undefined, primaryCurrency === "USD" ? { maximumFractionDigits: 2 } : undefined)}
                     {primaryCurrency === "MMK" ? " Ks" : ""}
-                  </p>
+                  </FuiMetric>
                   {(() => {
                     const currencies = ["THB", "USD", "MMK"] as const;
                     const secondary = currencies.filter(c => c !== primaryCurrency);
@@ -230,43 +329,46 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
                       return `${sign}${val.toLocaleString()} Ks`;
                     };
                     return (
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        {formatSec(secondary[0])} • {formatSec(secondary[1])}
+                      <p className="flowstate-currency-chips mt-2">
+                        <span>{formatSec(secondary[0])}</span><span>{formatSec(secondary[1])}</span>
                       </p>
                     );
                   })()}
+                  {stats.incomeThisMonth > 0 && stats.expensesThisMonth > stats.incomeThisMonth && (
+                    <div className="flowstate-net-insight">
+                      <TrendingDown className="h-4 w-4" aria-hidden="true" />
+                      <span>
+                        Expenses outpaced income <strong>{Math.max(1, Math.round(stats.expensesThisMonth / stats.incomeThisMonth))}:1</strong>
+                        {categoryBreakdown[0]?.category ? ` — ${categoryBreakdown[0].category} drove the deficit.` : "."}
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <div className={cn(
-                  "p-3 sm:p-4 rounded-2xl transition-all duration-300 group-hover:scale-110",
-                  stats.netBalance >= 0
-                    ? "bg-success/15 ring-2 ring-success/20 shadow-lg shadow-success/10"
-                    : "bg-destructive/15 ring-2 ring-destructive/20 shadow-lg shadow-destructive/10"
-                )}>
-                  {stats.netBalance >= 0
-                    ? <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-success" />
-                    : <TrendingDown className="h-5 w-5 sm:h-6 sm:w-6 text-destructive" />
-                  }
-                </div>
+                <FuiStatus
+                  status={netState === "profit" ? "success" : netState === "loss" ? "danger" : "offline"}
+                  label={netState === "profit" ? "Positive cash flow" : netState === "loss" ? "Deficit" : "No movement"}
+                  className="flowstate-net-status"
+                />
               </div>
-            </div>
-          </div>
+            </FuiPanel>
+          </div>}
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-1.5 px-3 lg:pl-0 py-2">
-            <StatCard title="Income" value={stats.incomeThisMonth} multiValues={stats.incomeMulti} icon={TrendingUp} color="green" percentageChange={stats.incomeChange} compact primaryCurrency={primaryCurrency} />
-            <StatCard title="Expenses" value={stats.expensesThisMonth} multiValues={stats.expenseMulti} icon={TrendingDown} color="red" percentageChange={stats.expenseChange} compact primaryCurrency={primaryCurrency} />
-            <StatCard title="Total Balance" value={stats.totalBalance} multiValues={stats.totalBalanceMulti} icon={PiggyBank} color="blue" showTrend={false} compact primaryCurrency={primaryCurrency} />
-            <StatCard title="Subscriptions" value={stats.subscriptionsMonthly} multiValues={stats.subscriptionsMulti} icon={CreditCard} color="purple" showTrend={false} compact primaryCurrency={primaryCurrency} />
+          <div className="grid grid-cols-2 gap-[10px]">
+            <StatCard title={`Income · ${currentMonthLabel}`} value={stats.incomeThisMonth} multiValues={stats.incomeMulti} icon={TrendingUp} color="green" percentageChange={stats.incomeChange} previousValue={stats.incomeLastMonth} previousLabel={previousMonthLabel} context={topIncomeSource ? `top: ${topIncomeSource}` : "no income entries"} compact primaryCurrency={primaryCurrency} />
+            <StatCard title={`Expenses · ${currentMonthLabel}`} value={stats.expensesThisMonth} multiValues={stats.expenseMulti} icon={TrendingDown} color="red" percentageChange={stats.expenseChange} previousValue={stats.expensesLastMonth} previousLabel={previousMonthLabel} context={categoryBreakdown[0]?.category ? `${categoryBreakdown[0].category}${stats.expenseChange > 0 ? " spike" : " top spend"}` : "no expenses"} increaseIsPositive={false} compact primaryCurrency={primaryCurrency} />
+            <StatCard title="Total Balance" value={stats.totalBalance} multiValues={stats.totalBalanceMulti} icon={PiggyBank} color="blue" showTrend={false} context={accounts.length ? `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}` : "no linked accounts yet"} compact primaryCurrency={primaryCurrency} />
+            <StatCard title="Subscriptions" value={stats.subscriptionsMonthly} multiValues={stats.subscriptionsMulti} icon={CreditCard} color="purple" showTrend={false} context={`${subscriptions.length} active · monthly`} compact primaryCurrency={primaryCurrency} />
           </div>
         </div>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 mt-2">
-          <div className="px-3 shrink-0">
-            <TabsList className="w-full justify-start h-auto p-1 bg-muted/30 border border-border/30 rounded-xl overflow-x-auto flex-nowrap scrollbar-hide backdrop-blur-sm">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flowstate-tabs flex-1 flex flex-col min-h-0">
+          <div className="flowstate-tabs-bar shrink-0">
+            <TabsList className="flowstate-tabs-list w-full justify-start h-auto p-1 overflow-x-auto flex-nowrap scrollbar-hide">
               <TabsTrigger value="overview" className="text-[10px] sm:text-xs whitespace-nowrap rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25 transition-all">Overview</TabsTrigger>
               <TabsTrigger value="transactions" className="text-[10px] sm:text-xs whitespace-nowrap rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25 transition-all">Transactions</TabsTrigger>
-              <TabsTrigger value="cfo" className="text-[10px] sm:text-xs whitespace-nowrap rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary/70 data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/40 transition-all font-medium">CFO 💼</TabsTrigger>
+              <TabsTrigger value="plan" className="text-[10px] sm:text-xs whitespace-nowrap rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25 transition-all">Plan</TabsTrigger>
               <TabsTrigger value="subscriptions" className="text-[10px] sm:text-xs whitespace-nowrap rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25 transition-all">Subscriptions</TabsTrigger>
               <TabsTrigger value="accounts" className="text-[10px] sm:text-xs whitespace-nowrap rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25 transition-all">Accounts</TabsTrigger>
               <TabsTrigger value="ai-insights" className="text-[10px] sm:text-xs whitespace-nowrap rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/25 transition-all">AI Insights</TabsTrigger>
@@ -275,41 +377,32 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
             </TabsList>
           </div>
 
-          <div ref={tabScrollRef} className="flex-1 overflow-y-auto px-3 py-2 custom-scrollbar">
-            <TabsContent value="overview" className="m-0 space-y-3 sm:space-y-4">
-              {/* Financial Goal — headline progress bar (net savings toward a target). */}
-              <FinancialGoalCard userId={userId} currency={primaryCurrency} />
-
-              {/* Source Flow — daily income (by source) & expense (by category). */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="text-[11px] text-muted-foreground">Income sources & expense flow over time</div>
-                  <FinanceRangeSelector value={flowRangePreset} onChange={setFlowRangePreset} />
+          <div ref={tabScrollRef} className="flowstate-content flex-1 overflow-y-auto custom-scrollbar">
+            <Suspense fallback={<FlowStateModuleFallback />}>
+            <TabsContent value="transactions" className="flowstate-transactions-view m-0 space-y-[14px]">
+              <div className="flowstate-transaction-tools">
+                <label className="flowstate-search">
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                  <input value={transactionQuery} onChange={(event) => setTransactionQuery(event.target.value)} placeholder="Search transactions…" aria-label="Search transactions" />
+                </label>
+                <div className="flowstate-filter" role="group" aria-label="Filter transactions">
+                  {(["all", "income", "expense"] as const).map((filter) => (
+                    <button key={filter} type="button" data-active={transactionFilter === filter} onClick={() => setTransactionFilter(filter)}>
+                      {filter[0].toUpperCase() + filter.slice(1)}
+                    </button>
+                  ))}
                 </div>
-                <Suspense fallback={<div className="consultant-card h-[360px] flex items-center justify-center text-xs text-muted-foreground gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading flow…</div>}>
-                  <SourceFlowChart data={sourceFlow} currency={primaryCurrency === "MMK" ? "Ks" : primaryCurrency} periodLabel={flowRangeSel.label} />
-                </Suspense>
               </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-                <SpendingDonutChart data={categoryBreakdown} currency={primaryCurrency === "MMK" ? "Ks" : primaryCurrency} />
-                <TrendChartSwitcher
-                  monthlyData={monthlyTrend}
-                  dailyData={dailyTrend}
-                  isMonthlyLoading={trendLoading}
-                  isDailyLoading={dailyLoading}
-                  currency={primaryCurrency === "MMK" ? "Ks" : primaryCurrency}
-                />
-                <SpendingCalendar userId={userId} primaryCurrency={primaryCurrency} />
+              <div className="flowstate-transaction-summary">
+                <div><span>Income</span><CurrencyDisplay amount={stats.incomeThisMonth} currency={primaryCurrency} className="text-emerald-300" /></div>
+                <div><span>Expenses</span><CurrencyDisplay amount={stats.expensesThisMonth} currency={primaryCurrency} className="text-rose-400" /></div>
+                <div><span>Net</span><CurrencyDisplay amount={stats.netBalance} currency={primaryCurrency} className={stats.netBalance >= 0 ? "text-emerald-300" : "text-rose-400"} /></div>
               </div>
-            </TabsContent>
-
-            <TabsContent value="transactions" className="m-0 space-y-2">
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : transactions.length === 0 ? (
+              ) : visibleTransactions.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Wallet className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No transactions yet</p>
@@ -321,7 +414,7 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
                 </div>
               ) : (
                 <VirtualTransactionList
-                  transactions={transactions}
+                  transactions={visibleTransactions}
                   scrollParentRef={tabScrollRef}
                   primaryCurrency={primaryCurrency}
                   onDelete={deleteTransaction}
@@ -344,6 +437,16 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
               />
             </TabsContent>
 
+            <TabsContent value="plan" className="m-0">
+              <FlowStatePlan
+                userId={userId}
+                primaryCurrency={primaryCurrency}
+                accounts={accounts}
+                categories={categories}
+                subscriptions={subscriptions}
+              />
+            </TabsContent>
+
             <TabsContent value="accounts" className="m-0">
               <FlowStateAccounts
                 accounts={accounts}
@@ -356,8 +459,79 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
               />
             </TabsContent>
 
-            <TabsContent value="cfo" className="m-0">
-              <FlowStateCFO userId={userId} currency={primaryCurrency} onOpenInBeeBot={openInSitku} />
+            <TabsContent value="overview" className="m-0 space-y-[14px]">
+              <FlowStateCFO
+                userId={userId}
+                currency={primaryCurrency}
+                rangePreset={flowRangePreset}
+                onRangePresetChange={setFlowRangePreset}
+                onOpenInBeeBot={openInSitku}
+                showIncomeTimeline={visibleWidgets.income}
+                showIncomeIntelligence={visibleWidgets.incomeIntel}
+              />
+
+              {/* Handoff §5 — Spending by category ‖ Monthly trend (donut pairs with trend). */}
+              {(visibleWidgets.spending || visibleWidgets.trend) && <div className={cn("grid grid-cols-1 gap-[14px]", visibleWidgets.spending && visibleWidgets.trend && "md:grid-cols-[1fr_1.25fr]")}>
+                {visibleWidgets.spending && <SpendingDonutChart data={categoryBreakdown} currency={primaryCurrency === "MMK" ? "Ks" : primaryCurrency} />}
+                {visibleWidgets.trend && <MonthlyTrendChart
+                  data={monthlyTrend}
+                  isLoading={trendLoading}
+                  currency={primaryCurrency === "MMK" ? "Ks" : primaryCurrency}
+                />}
+              </div>}
+
+              {/* Handoff §6 — Savings goal ‖ subscriptions. */}
+              {(visibleWidgets.goal || visibleWidgets.subs) && <div className={cn("grid grid-cols-1 gap-[14px]", visibleWidgets.goal && visibleWidgets.subs && "md:grid-cols-[1.25fr_1fr]")}>
+                {visibleWidgets.goal && <FinancialGoalCard userId={userId} currency={primaryCurrency} />}
+                {visibleWidgets.subs && <section className="flowstate-glass flowstate-home-card" aria-labelledby="home-subscriptions-title">
+                  <div className="flowstate-section-heading">
+                    <div>
+                      <h3 id="home-subscriptions-title">Subscriptions</h3>
+                      <p>{subscriptions.filter((subscription) => subscription.is_active).length} active · monthly commitments</p>
+                    </div>
+                    <Repeat2 className="h-4 w-4" />
+                  </div>
+                  <div className="flowstate-home-list">
+                    {subscriptions.filter((subscription) => subscription.is_active).slice(0, 3).map((subscription) => (
+                      <button key={subscription.id} type="button" className="flowstate-home-row" onClick={() => setActiveTab("subscriptions")}>
+                        <span className="flowstate-home-icon" style={{ color: subscription.color || "#c4b5fd", backgroundColor: `${subscription.color || "#c4b5fd"}18` }}>
+                          {subscription.icon || <CreditCard className="h-4 w-4" />}
+                        </span>
+                        <span className="min-w-0 flex-1 text-left">
+                          <strong>{subscription.name}</strong>
+                          <small>{subscription.billing_cycle} · next {new Date(`${subscription.next_billing_date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small>
+                        </span>
+                        <CurrencyDisplay amount={subscription.amount} currency={subscription.currency} size="sm" />
+                      </button>
+                    ))}
+                    {subscriptions.filter((subscription) => subscription.is_active).length === 0 && (
+                      <button type="button" className="flowstate-home-empty" onClick={() => setActiveTab("subscriptions")}>No subscriptions yet · add one</button>
+                    )}
+                  </div>
+                </section>}
+              </div>}
+
+              {/* Handoff §7 — recent transactions ‖ monthly comparison. */}
+              {visibleWidgets.txns && <div className="grid grid-cols-1 md:grid-cols-2 gap-[14px]">
+                <section className="flowstate-glass flowstate-home-card flowstate-recent-card" aria-labelledby="recent-transactions-title">
+                  <div className="flowstate-section-heading">
+                    <h3 id="recent-transactions-title">Recent transactions</h3>
+                    <Button variant="ghost" size="sm" className="flowstate-view-all" onClick={() => setActiveTab("transactions")}>View all</Button>
+                  </div>
+                  <div className="flowstate-home-list">
+                    {transactions.slice(0, 3).map((transaction) => (
+                      <TransactionRow key={transaction.id} transaction={transaction} primaryCurrency={primaryCurrency} compact onEdit={setEditingTransaction} />
+                    ))}
+                    {transactions.length === 0 && (
+                      <button type="button" className="flowstate-home-empty" onClick={() => setAddTransactionOpen(true)}>No transactions yet · add an entry</button>
+                    )}
+                  </div>
+                </section>
+                <HistoryComparisonChart data={comparisonTrend} currency={primaryCurrency} isLoading={trendLoading} variant="home" />
+              </div>}
+
+              {/* Handoff §8 — daily cash-flow calendar heatmap (full width). */}
+              {visibleWidgets.calendar && <SpendingCalendar userId={userId} primaryCurrency={primaryCurrency} />}
             </TabsContent>
 
             <TabsContent value="ai-insights" className="m-0">
@@ -371,35 +545,44 @@ export function FlowStateDialog({ open, onOpenChange, userId }: FlowStateDialogP
             <TabsContent value="manage" className="m-0">
               <FlowStateManage userId={userId} categories={categories} settings={settings} onRefetch={refetch} />
             </TabsContent>
+            </Suspense>
           </div>
         </Tabs>
 
         {/* Add Transaction Dialog */}
-        <AddTransactionDialog
-          open={addTransactionOpen}
-          onOpenChange={setAddTransactionOpen}
-          accounts={accounts}
-          categories={categories}
-          primaryCurrency={primaryCurrency}
-          sourceSuggestions={sourceSuggestions}
-          onSubmit={handleAddTransaction}
-          isSubmitting={isAddingTransaction}
-        />
+        {addTransactionOpen && (
+          <Suspense fallback={null}>
+            <AddTransactionDialog
+              open
+              onOpenChange={setAddTransactionOpen}
+              accounts={accounts}
+              categories={categories}
+              primaryCurrency={primaryCurrency}
+              sourceSuggestions={sourceSuggestions}
+              onSubmit={handleAddTransaction}
+              isSubmitting={isAddingTransaction}
+            />
+          </Suspense>
+        )}
 
         {/* Edit Transaction Dialog */}
-        <EditTransactionDialog
-          open={!!editingTransaction}
-          onOpenChange={(open) => !open && setEditingTransaction(null)}
-          transaction={editingTransaction}
-          accounts={accounts}
-          categories={categories}
-          primaryCurrency={primaryCurrency}
-          sourceSuggestions={sourceSuggestions}
-          onSubmit={(id, data) => updateTransaction(id, data)}
-          onDelete={deleteTransaction}
-          isSubmitting={isUpdatingTransaction}
-          isDeleting={isDeletingTransaction}
-        />
+        {editingTransaction && (
+          <Suspense fallback={null}>
+            <EditTransactionDialog
+              open
+              onOpenChange={(nextOpen) => !nextOpen && setEditingTransaction(null)}
+              transaction={editingTransaction}
+              accounts={accounts}
+              categories={categories}
+              primaryCurrency={primaryCurrency}
+              sourceSuggestions={sourceSuggestions}
+              onSubmit={(id, data) => updateTransaction(id, data)}
+              onDelete={deleteTransaction}
+              isSubmitting={isUpdatingTransaction}
+              isDeleting={isDeletingTransaction}
+            />
+          </Suspense>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -4,7 +4,6 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Settings, 
   FolderOpen, 
@@ -18,7 +17,16 @@ import {
   ShieldCheck,
   Download,
   Upload,
-} from "lucide-react";
+  Wallet,
+  TrendingUp,
+  Sparkles,
+  BarChart3,
+  PiggyBank,
+  CreditCard,
+  Repeat2,
+  Calendar,
+  type LucideIcon,
+} from "@/components/flowstate/solarIcons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { financeStore } from "@/repositories/local/financeStore";
 import { exportAndDownload, readBackupFile, importBackup } from "@/lib/dataBackup";
@@ -26,7 +34,9 @@ import { onDurabilityChange, refreshDurabilityStatus, type DurabilityStatus } fr
 import { toast } from "sonner";
 import type { TransactionCategory, FlowStateSettings } from "@/hooks/useFlowState";
 import { AddCategoryDialog } from "./AddCategoryDialog";
+import { CategoryIcon } from "./CategoryIcon";
 import { cn } from "@/lib/utils";
+import { FLOWSTATE_WIDGETS, readFlowStateWidgetVisibility, writeFlowStateWidgetVisibility, type FlowStateWidgetKey } from "@/lib/flowStateOverviewWidgets";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,20 +63,26 @@ const CURRENCIES = [
   { code: "USDT", label: "Tether (₮)" },
 ];
 
-const CATEGORY_ICONS: Record<string, string> = {
-  Briefcase: "💼",
-  ShoppingCart: "🛒",
-  Utensils: "🍽️",
-  Car: "🚗",
-  Home: "🏠",
-  Heart: "❤️",
-  Gamepad2: "🎮",
-  GraduationCap: "🎓",
-  Plane: "✈️",
-  Gift: "🎁",
-  Wallet: "💰",
-  CreditCard: "💳",
+const WIDGET_ICONS: Record<FlowStateWidgetKey, LucideIcon> = {
+  net: Wallet,
+  income: TrendingUp,
+  incomeIntel: Sparkles,
+  spending: BarChart3,
+  trend: TrendingUp,
+  goal: PiggyBank,
+  subs: CreditCard,
+  txns: Repeat2,
+  calendar: Calendar,
 };
+
+function groupCategories(rows: TransactionCategory[]) {
+  const groups = new Map<string, TransactionCategory[]>();
+  for (const category of rows) {
+    const group = category.group || (category.is_system ? "Legacy & general" : "Custom");
+    groups.set(group, [...(groups.get(group) || []), category]);
+  }
+  return [...groups.entries()];
+}
 
 export function FlowStateManage({ userId, categories, settings, onRefetch }: FlowStateManageProps) {
   const queryClient = useQueryClient();
@@ -88,7 +104,7 @@ export function FlowStateManage({ userId, categories, settings, onRefetch }: Flo
     setBackupBusy(true);
     try {
       const s = await exportAndDownload();
-      toast.success(`Backup saved — ${s.notes} notes · ${s.transactions} transactions · ${s.posts} posts`);
+      toast.success(`Backup saved — ${s.notes} notes · ${s.transactions} transactions · ${s.posts} posts · ${s.evMessages} E.V messages`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Backup failed");
     } finally {
@@ -105,7 +121,7 @@ export function FlowStateManage({ userId, categories, settings, onRefetch }: Flo
       const backup = await readBackupFile(file);
       const s = await importBackup(backup);
       queryClient.invalidateQueries(); // refresh every view from restored data
-      toast.success(`Restored — ${s.notes} notes · ${s.transactions} transactions · ${s.posts} posts`);
+      toast.success(`Restored — ${s.notes} notes · ${s.transactions} transactions · ${s.posts} posts · ${s.evMessages} E.V messages`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Restore failed");
     } finally {
@@ -117,9 +133,20 @@ export function FlowStateManage({ userId, categories, settings, onRefetch }: Flo
   const [primaryCurrency, setPrimaryCurrency] = useState(settings?.primary_currency || "MMK");
   const [monthlyBudget, setMonthlyBudget] = useState(String(settings?.monthly_budget || ""));
   const [showOnDashboard, setShowOnDashboard] = useState(settings?.show_balance_on_dashboard ?? true);
+  const [visibleWidgets, setVisibleWidgets] = useState(readFlowStateWidgetVisibility);
+
+  const toggleWidget = (key: FlowStateWidgetKey) => {
+    setVisibleWidgets((current) => {
+      const next = { ...current, [key]: !current[key] };
+      writeFlowStateWidgetVisibility(next);
+      return next;
+    });
+  };
 
   const incomeCategories = categories.filter(c => c.type === "income");
   const expenseCategories = categories.filter(c => c.type === "expense");
+  const incomeGroups = groupCategories(incomeCategories);
+  const expenseGroups = groupCategories(expenseCategories);
 
   // Update settings mutation
   const updateSettingsMutation = useMutation({
@@ -181,18 +208,20 @@ export function FlowStateManage({ userId, categories, settings, onRefetch }: Flo
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flowstate-manage-view space-y-[14px]">
       {/* Categories Section */}
-      <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+      <Card className="flowstate-manage-card flowstate-manage-categories p-4 border-border/50 bg-card/50 backdrop-blur-sm">
         <div className="flex items-center gap-2 mb-4">
           <FolderOpen className="h-4 w-4 text-blue-500" />
           <h4 className="font-medium">Categories</h4>
         </div>
 
-        {/* Income Categories */}
-        <div className="mb-4">
+        <div className="mb-5">
           <div className="flex items-center justify-between mb-2">
-            <h5 className="text-sm text-muted-foreground">Income Categories</h5>
+            <div>
+              <h5 className="text-sm font-medium">Income</h5>
+              <p className="text-[11px] text-muted-foreground">{incomeCategories.length} categories · grouped by source</p>
+            </div>
             <Button 
               variant="ghost" 
               size="sm" 
@@ -206,39 +235,37 @@ export function FlowStateManage({ userId, categories, settings, onRefetch }: Flo
               Add
             </Button>
           </div>
-          <div className="space-y-1">
-            {incomeCategories.map((cat) => (
-              <div 
-                key={cat.id} 
-                className="flex items-center justify-between p-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <span>{CATEGORY_ICONS[cat.icon] || "📁"}</span>
-                  <span className="text-sm">{cat.name}</span>
-                  {cat.is_system && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">System</span>
-                  )}
+          <div className="grid gap-2 md:grid-cols-2">
+            {incomeGroups.map(([group, rows]) => (
+              <div key={group} className="rounded-[var(--radius)] border border-border/40 bg-muted/15 p-2">
+                <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase text-muted-foreground">{group}</p>
+                <div className="space-y-0.5">
+                  {rows.map((cat) => (
+                    <div key={cat.id} className="flex min-h-10 items-center gap-2 rounded-[var(--radius)] px-2 hover:bg-muted/50">
+                      <CategoryIcon icon={cat.icon} color={cat.color} containerClassName="h-7 w-7 shrink-0 rounded-[var(--radius)]" style={{ backgroundColor: `${cat.color}18` }} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium">{cat.name}</span>
+                        {cat.name_my && <span className="block truncate text-[9px] text-muted-foreground">{cat.name_my}</span>}
+                      </span>
+                      {!cat.is_system && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteCategoryMutation.mutate(cat.id)} disabled={deleteCategoryMutation.isPending} aria-label={`Delete ${cat.name}`}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                {!cat.is_system && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteCategoryMutation.mutate(cat.id)}
-                    disabled={deleteCategoryMutation.isPending}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                )}
               </div>
             ))}
           </div>
         </div>
 
-        {/* Expense Categories */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h5 className="text-sm text-muted-foreground">Expense Categories</h5>
+            <div>
+              <h5 className="text-sm font-medium">Expenses</h5>
+              <p className="text-[11px] text-muted-foreground">{expenseCategories.length} categories · specific bills, rent and daily spend</p>
+            </div>
             <Button 
               variant="ghost" 
               size="sm" 
@@ -252,38 +279,58 @@ export function FlowStateManage({ userId, categories, settings, onRefetch }: Flo
               Add
             </Button>
           </div>
-          <div className="space-y-1 max-h-48 overflow-y-auto">
-            {expenseCategories.map((cat) => (
-              <div 
-                key={cat.id} 
-                className="flex items-center justify-between p-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <span>{CATEGORY_ICONS[cat.icon] || "📁"}</span>
-                  <span className="text-sm">{cat.name}</span>
-                  {cat.is_system && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">System</span>
-                  )}
+          <div className="grid gap-2 md:grid-cols-2">
+            {expenseGroups.map(([group, rows]) => (
+              <div key={group} className="rounded-[var(--radius)] border border-border/40 bg-muted/15 p-2">
+                <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase text-muted-foreground">{group}</p>
+                <div className="space-y-0.5">
+                  {rows.map((cat) => (
+                    <div key={cat.id} className="flex min-h-10 items-center gap-2 rounded-[var(--radius)] px-2 hover:bg-muted/50">
+                      <CategoryIcon icon={cat.icon} color={cat.color} containerClassName="h-7 w-7 shrink-0 rounded-[var(--radius)]" style={{ backgroundColor: `${cat.color}18` }} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium">{cat.name}</span>
+                        {cat.name_my && <span className="block truncate text-[9px] text-muted-foreground">{cat.name_my}</span>}
+                      </span>
+                      {!cat.is_system && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => deleteCategoryMutation.mutate(cat.id)} disabled={deleteCategoryMutation.isPending} aria-label={`Delete ${cat.name}`}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                {!cat.is_system && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteCategoryMutation.mutate(cat.id)}
-                    disabled={deleteCategoryMutation.isPending}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                )}
               </div>
             ))}
           </div>
         </div>
       </Card>
 
+      {/* Overview widget visibility — mirrors the handoff and updates the dashboard immediately. */}
+      <Card className="flowstate-manage-card flowstate-widget-manager p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <Eye className="h-4 w-4 text-violet-300" />
+          <h4 className="font-medium">Overview Widgets</h4>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">Choose which cards appear on your Overview / CFO dashboard.</p>
+        <div className="flowstate-widget-list">
+          {FLOWSTATE_WIDGETS.map((widget) => {
+            const WidgetIcon = WIDGET_ICONS[widget.key];
+            return (
+              <div key={widget.key} className="flowstate-widget-row">
+                <span className="flowstate-widget-icon"><WidgetIcon className="h-4 w-4" /></span>
+                <span className="min-w-0 flex-1">
+                  <strong>{widget.label}</strong>
+                  <small>{widget.description}</small>
+                </span>
+                <Switch checked={visibleWidgets[widget.key]} onCheckedChange={() => toggleWidget(widget.key)} aria-label={`Show ${widget.label}`} />
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
       {/* Settings Section */}
-      <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+      <Card className="flowstate-manage-card p-4 border-border/50 bg-card/50 backdrop-blur-sm">
         <div className="flex items-center gap-2 mb-4">
           <Settings className="h-4 w-4 text-emerald-500" />
           <h4 className="font-medium">Settings</h4>
@@ -296,16 +343,11 @@ export function FlowStateManage({ userId, categories, settings, onRefetch }: Flo
               <Globe className="h-4 w-4 text-muted-foreground" />
               <Label className="text-sm">Primary Currency</Label>
             </div>
-            <Select value={primaryCurrency} onValueChange={setPrimaryCurrency}>
-              <SelectTrigger className="w-40 h-9 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CURRENCIES.map(c => (
-                  <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flowstate-currency-options" role="group" aria-label="Primary currency">
+              {CURRENCIES.map((currency) => (
+                <button key={currency.code} type="button" data-active={primaryCurrency === currency.code} onClick={() => setPrimaryCurrency(currency.code)} title={currency.label}>{currency.code}</button>
+              ))}
+            </div>
           </div>
 
           {/* Monthly Budget */}
@@ -350,13 +392,13 @@ export function FlowStateManage({ userId, categories, settings, onRefetch }: Flo
       </Card>
 
       {/* Backup & Restore — the safety net against browser eviction (all app data). */}
-      <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
+      <Card className="flowstate-manage-card p-4 border-border/50 bg-card/50 backdrop-blur-sm">
         <div className="flex items-center gap-2 mb-1">
           <ShieldCheck className="h-4 w-4 text-emerald-500" />
           <h4 className="font-medium">Backup &amp; Restore</h4>
         </div>
         <p className="text-xs text-muted-foreground mb-3">
-          Save <b>all</b> your data (notes, finance, consultant) to one file you keep safely — and restore it on any device. The best protection against data loss.
+          Save <b>all</b> your data (notes, finance, consultant, and E.V memory) to one file you keep safely — and restore it on any device. The best protection against data loss.
         </p>
         {atEvictionRisk && (
           <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-600 dark:text-amber-400">
@@ -377,7 +419,7 @@ export function FlowStateManage({ userId, categories, settings, onRefetch }: Flo
       </Card>
 
       {/* Danger Zone */}
-      <Card className="p-4 border-destructive/30 bg-destructive/5">
+      <Card className="flowstate-manage-danger p-4 border-destructive/30 bg-destructive/5">
         <div className="flex items-center gap-2 mb-4">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <h4 className="font-medium text-destructive">Danger Zone</h4>

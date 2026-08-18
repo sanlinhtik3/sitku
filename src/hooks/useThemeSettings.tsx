@@ -63,7 +63,8 @@ export const useThemeSettings = () => {
 
   // Apply theme immediately when it changes
   useEffect(() => {
-    if (theme?.primary_color) {
+    // The workspace theme compiler is authoritative while a custom theme is active.
+    if (theme?.primary_color && !document.documentElement.hasAttribute("data-custom-theme")) {
       applyTheme(theme.primary_color);
     }
   }, [theme]);
@@ -75,7 +76,7 @@ export const useThemeSettings = () => {
       if (!session.session) throw new Error("Not authenticated");
 
       // Apply theme immediately for instant feedback
-      applyTheme(primary_color);
+      if (!document.documentElement.hasAttribute("data-custom-theme")) applyTheme(primary_color);
       
       const newTheme: ThemeSettings = {
         id: '',

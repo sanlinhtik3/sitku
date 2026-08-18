@@ -1,7 +1,9 @@
 import { Card } from "@/components/ui/card";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { ArrowDown, ArrowUp } from "lucide-react";
 
-const COLORS = ["#38bdf8", "#22c55e", "#f59e0b", "#f43f5e", "#a78bfa", "#14b8a6", "#eab308"];
+const PLATFORM_COLORS: Record<string,string> = { youtube:"#ef4444", tiktok:"#d946ef", instagram:"#ec4899", facebook:"#3b82f6", telegram:"#38bdf8" };
+const fallbackColors = ["#38bdf8", "#34d399", "#f4d35e", "#fb7185", "#c4b5fd"];
 
 const fmt = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M`
@@ -9,38 +11,31 @@ const fmt = (n: number) =>
   : String(Math.round(n || 0));
 
 interface PlatformMixRow {
-  platform?: string | null;
-  views?: number | string | null;
-  engagement?: number | string | null;
-  revenue?: number | string | null;
+  platform: string;
+  views: number;
+  engagement: number;
+  views_delta_pct: number;
 }
 
 export function ChannelMixDonut({
-  dashboard,
+  platformMix,
   periodLabel,
 }: {
-  dashboard?: { by_platform?: PlatformMixRow[] } | null;
+  platformMix?: PlatformMixRow[] | null;
   periodLabel: string;
 }) {
-  const rows = (dashboard?.by_platform ?? [])
-    .map((r) => ({
-      platform: String(r.platform ?? "other"),
-      views: Number(r.views || 0),
-      engagement: Number(r.engagement || 0),
-      revenue: Number(r.revenue || 0),
-    }))
-    .filter((r) => r.views || r.engagement || r.revenue)
-    .sort((a, b) => (b.views + b.engagement + b.revenue) - (a.views + a.engagement + a.revenue));
+  const rows = (platformMix ?? []).filter((row) => row.views || row.engagement);
 
   const totalViews = rows.reduce((s, r) => s + r.views, 0);
+  const totalEngagement = rows.reduce((s,r)=>s+r.engagement,0);
   const best = rows[0];
 
   return (
-    <Card className="consultant-card p-4">
+    <Card className="consultant-card p-4 sm:px-5">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{periodLabel} Channel Mix</div>
-          <div className="text-sm font-semibold mt-0.5">Donut allocation by attention</div>
+          <div className="consultant-section-title">Channel mix</div>
+          <div className="text-[11.5px] text-[#8a8a8e] mt-0.5">{periodLabel} attention allocation</div>
         </div>
         <div className="text-right">
           <div className="text-[10px] text-muted-foreground">Best channel</div>
@@ -55,11 +50,11 @@ export function ChannelMixDonut({
           </div>
         ) : (
           <>
-            <div className="h-[140px]">
+            <div className="relative h-[140px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={rows} dataKey="views" nameKey="platform" innerRadius={43} outerRadius={64} paddingAngle={2} animationDuration={700} animationEasing="ease-out">
-                    {rows.map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
+                    {rows.map((row, idx) => <Cell key={idx} fill={PLATFORM_COLORS[row.platform] || fallbackColors[idx % fallbackColors.length]} />)}
                   </Pie>
                   <Tooltip
                     contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 11, borderRadius: 8 }}
@@ -67,21 +62,24 @@ export function ChannelMixDonut({
                   />
                 </PieChart>
               </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><span className="text-base font-bold tabular-nums">{fmt(totalEngagement)}</span><span className="text-[9px] uppercase tracking-[.08em] text-[#8a8a8e]">engage</span></div>
             </div>
             <div className="space-y-2">
               {rows.slice(0, 5).map((r, idx) => {
                 const pct = totalViews > 0 ? (r.views / totalViews) * 100 : 0;
                 return (
-                  <div key={r.platform} className="space-y-1">
+                  <div key={r.platform}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: COLORS[idx % COLORS.length] }} />
+                        <span className="h-2 w-2 rounded-[3px] shrink-0" style={{ background: PLATFORM_COLORS[r.platform] || fallbackColors[idx % fallbackColors.length] }} />
                         <span className="text-xs capitalize truncate">{r.platform}</span>
                       </div>
-                      <span className="text-[10px] tabular-nums text-muted-foreground">{pct.toFixed(1)}%</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-muted/25 overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: COLORS[idx % COLORS.length] }} />
+                      <span className="flex items-center gap-1 text-[10px] tabular-nums text-muted-foreground">
+                        {pct.toFixed(1)}%
+                        <span className={r.views_delta_pct >= 0 ? "text-emerald-300" : "text-rose-400"} title="Views change vs previous period">
+                          {r.views_delta_pct >= 0 ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />}
+                        </span>
+                      </span>
                     </div>
                   </div>
                 );

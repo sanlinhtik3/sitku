@@ -6,6 +6,8 @@
 
 import { financeStore } from "@/repositories/local/financeStore";
 import { generatePresetHtml, suggestPresetHeight } from "@/lib/flowstate/widget-presets";
+import { parseTransactionLocalDate } from "@/lib/flowstate/financeDates";
+import { formatLocalDate } from "@/lib/dateUtils";
 
 export type CFOTool = "cashflow_forecast" | "runway_analysis" | "unit_economics" | "pnl_summary";
 
@@ -30,8 +32,8 @@ interface Txn { amount: number; currency: string; type: string; transaction_date
 
 async function fetchRecentTxns(userId: string, days: number, currency?: string): Promise<Txn[]> {
   const since = new Date(); since.setDate(since.getDate() - days);
-  const fromDate = since.toISOString().slice(0, 10);
-  const toDate = new Date().toISOString().slice(0, 10);
+  const fromDate = formatLocalDate(since);
+  const toDate = formatLocalDate();
   const rows = await financeStore.listTransactions(userId, fromDate, toDate);
   return rows
     .filter((t) => !currency || t.currency === currency)
@@ -71,7 +73,7 @@ async function cashflowForecast(userId: string, args: Record<string, unknown>): 
 
   const buckets: Record<string, { income: number; expense: number }> = {};
   for (const t of txns) {
-    const d = new Date(t.transaction_date);
+    const d = parseTransactionLocalDate(t.transaction_date);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     if (!buckets[key]) buckets[key] = { income: 0, expense: 0 };
     if (t.type === "income") buckets[key].income += t.amount;
@@ -138,7 +140,7 @@ async function runwayAnalysis(userId: string, args: Record<string, unknown>): Pr
 
   const buckets: Record<string, { income: number; expense: number }> = {};
   for (const t of txns) {
-    const d = new Date(t.transaction_date);
+    const d = parseTransactionLocalDate(t.transaction_date);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     if (!buckets[key]) buckets[key] = { income: 0, expense: 0 };
     if (t.type === "income") buckets[key].income += t.amount;
@@ -160,8 +162,8 @@ async function runwayAnalysis(userId: string, args: Record<string, unknown>): Pr
     const color = remaining > 12 ? "var(--color-success)" : remaining > 6 ? "var(--color-warning)" : "var(--color-danger)";
     ganttTasks.push({
       label: monthLabel(start),
-      start: start.toISOString().slice(0, 10),
-      end: end.toISOString().slice(0, 10),
+      start: formatLocalDate(start),
+      end: formatLocalDate(end),
       color,
       status: remaining > 6 ? "completed" : "active",
     });

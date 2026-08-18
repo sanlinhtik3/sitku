@@ -283,6 +283,7 @@ export const MemoryAgentChat = ({ className }: Props) => {
         {/* ── Composer ── */}
         <div className="border-t border-border/15 bg-card/30 shrink-0">
           <ChatInput
+            draftScope="memory"
             onSend={handleSend}
             isStreaming={chat.isStreaming}
             onCancel={chat.cancelStreaming}

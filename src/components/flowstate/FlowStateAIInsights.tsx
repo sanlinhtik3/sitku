@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,12 +15,18 @@ import {
   AlertTriangle,
   CheckCircle2,
   Zap
-} from "lucide-react";
+} from "@/components/flowstate/solarIcons";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CurrencyDisplay } from "./ui/CurrencyDisplay";
 import type { FlowStateStats, Transaction, CategoryBreakdown } from "@/hooks/useFlowState";
+import {
+  answerLocalFinanceQuestion,
+  buildLocalFinanceInsights,
+  type FinanceInsight,
+  type FinanceInsightResponse,
+} from "@/lib/flowstate/aiInsights";
 import { cn } from "@/lib/utils";
 
 interface FlowStateAIInsightsProps {
@@ -29,20 +35,6 @@ interface FlowStateAIInsightsProps {
   transactions: Transaction[];
   categoryBreakdown: CategoryBreakdown[];
   currency: string;
-}
-
-interface AIInsight {
-  type: "warning" | "success" | "tip" | "prediction";
-  title: string;
-  description: string;
-  icon: string;
-}
-
-interface AIResponse {
-  insights: AIInsight[];
-  budgetRecommendation: number | null;
-  savingsPrediction: number | null;
-  monthlyForecast: number | null;
 }
 
 export function FlowStateAIInsights({ 
@@ -54,9 +46,18 @@ export function FlowStateAIInsights({
 }: FlowStateAIInsightsProps) {
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const cloudInsightsEnabled = Boolean(
+    import.meta.env.VITE_SUPABASE_URL &&
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  );
+  const localData = useMemo(
+    () => buildLocalFinanceInsights(stats, categoryBreakdown, currency),
+    [categoryBreakdown, currency, stats],
+  );
 
-  // Fetch AI insights
-  const { data: aiData, isLoading: insightsLoading, refetch: refetchInsights } = useQuery({
+  // Cloud analysis is optional. The local-first desktop build deliberately avoids
+  // calling the placeholder Supabase URL when no backend has been configured.
+  const { data: cloudData, isLoading: cloudLoading, refetch: refetchInsights } = useQuery({
     queryKey: ["flowstate-ai-insights", userId, stats.incomeThisMonth, stats.expensesThisMonth],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("flowstate-ai-insights", {
@@ -75,15 +76,21 @@ export function FlowStateAIInsights({
         },
       });
       if (error) throw error;
-      return data as AIResponse;
+      return data as FinanceInsightResponse;
     },
-    enabled: !!userId && transactions.length > 0,
+    enabled: cloudInsightsEnabled && !!userId && transactions.length > 0,
+    retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
+  const aiData = cloudData || localData;
+  const insightsLoading = cloudInsightsEnabled && cloudLoading;
 
   // Chat mutation
   const chatMutation = useMutation({
     mutationFn: async (message: string) => {
+      if (!cloudInsightsEnabled) {
+        return answerLocalFinanceQuestion(message, stats, categoryBreakdown, currency);
+      }
       const { data, error } = await supabase.functions.invoke("flowstate-ai-insights", {
         body: {
           type: "chat",
@@ -115,7 +122,7 @@ export function FlowStateAIInsights({
     chatMutation.mutate(chatMessage);
   };
 
-  const getInsightIcon = (type: AIInsight["type"]) => {
+  const getInsightIcon = (type: FinanceInsight["type"]) => {
     switch (type) {
       case "warning": return <AlertTriangle className="h-4 w-4 text-amber-500" />;
       case "success": return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
@@ -124,7 +131,7 @@ export function FlowStateAIInsights({
     }
   };
 
-  const getInsightBg = (type: AIInsight["type"]) => {
+  const getInsightBg = (type: FinanceInsight["type"]) => {
     switch (type) {
       case "warning": return "bg-amber-500/10 border-amber-500/20";
       case "success": return "bg-emerald-500/10 border-emerald-500/20";
@@ -148,7 +155,7 @@ export function FlowStateAIInsights({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flowstate-ai-view space-y-[14px]">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -157,18 +164,20 @@ export function FlowStateAIInsights({
           </div>
           <div>
             <h3 className="font-semibold">AI Personal Finance Manager</h3>
-            <p className="text-xs text-muted-foreground">Powered by Gemini AI</p>
+            <p className="text-xs text-muted-foreground">
+              {cloudInsightsEnabled ? "Powered by Gemini AI" : "Private on-device analysis"}
+            </p>
           </div>
         </div>
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={() => refetchInsights()}
-          disabled={insightsLoading}
+          onClick={() => cloudInsightsEnabled && refetchInsights()}
+          disabled={!cloudInsightsEnabled || insightsLoading}
           className="gap-1.5"
         >
           <Sparkles className={cn("h-3.5 w-3.5", insightsLoading && "animate-spin")} />
-          Refresh
+          {cloudInsightsEnabled ? "Refresh" : "Local"}
         </Button>
       </div>
 
@@ -214,7 +223,7 @@ export function FlowStateAIInsights({
           </div>
           {insightsLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : aiData?.budgetRecommendation ? (
+          ) : aiData?.budgetRecommendation != null ? (
             <div>
               <CurrencyDisplay 
                 amount={aiData.budgetRecommendation} 
@@ -237,7 +246,7 @@ export function FlowStateAIInsights({
           </div>
           {insightsLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : aiData?.savingsPrediction ? (
+          ) : aiData?.savingsPrediction != null ? (
             <div>
               <CurrencyDisplay 
                 amount={aiData.savingsPrediction} 
@@ -261,7 +270,7 @@ export function FlowStateAIInsights({
           </div>
           {insightsLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : aiData?.monthlyForecast ? (
+          ) : aiData?.monthlyForecast != null ? (
             <div className="flex items-center justify-between">
               <div>
                 <CurrencyDisplay 

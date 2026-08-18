@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { startOfMonth, endOfMonth, format, subMonths } from "date-fns";
 import { useExchangeRates } from "@/hooks/useExchangeRates";
 import { formatLocalDate } from "@/lib/dateUtils";
+import { transactionDateKey } from "@/lib/flowstate/financeDates";
 
 // Types
 export interface FinancialAccount {
@@ -26,11 +27,17 @@ export interface FinancialAccount {
 export interface TransactionCategory {
   id: string;
   user_id: string | null;
+  slug?: string;
   name: string;
   name_my: string | null;
   icon: string;
   color: string;
   type: "income" | "expense";
+  group?: string;
+  group_my?: string;
+  sort_order?: number;
+  keywords?: string[];
+  catalog_version?: number;
   is_system: boolean;
   is_active: boolean;
   created_at: string;
@@ -54,6 +61,9 @@ export interface Transaction {
   // Income sub-source ("Client A", "YouTube", …) — level 2 under the income category.
   // Optional, free-text. Empty/undefined → "Unattributed" in income-intelligence views.
   source?: string | null;
+  occurred_at?: string;
+  timezone?: string;
+  timezone_offset_minutes?: number;
   created_at: string;
   updated_at: string;
   // Joined data
@@ -143,6 +153,17 @@ export interface MonthlyTrend {
   expense: number;
 }
 
+function mutationErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function subscriptionMonthlyAmount(subscription: Subscription, convertToPrimary: (amount: number, fromCurrency: string) => number): number {
+  const amountInPrimary = convertToPrimary(Number(subscription.amount), subscription.currency || "USD");
+  if (subscription.billing_cycle === "yearly") return amountInPrimary / 12;
+  if (subscription.billing_cycle === "weekly") return amountInPrimary * 4.33;
+  return amountInPrimary;
+}
+
 // Main hook
 export function useFlowState(userId: string | undefined, primaryCurrency: string = "THB") {
   const queryClient = useQueryClient();
@@ -194,7 +215,7 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
     queryFn: async () => {
       if (!userId) return [];
       const rows = await financeStore.listTransactions(userId, format(lastMonthStart, "yyyy-MM-dd"), format(lastMonthEnd, "yyyy-MM-dd"));
-      return rows.map((t) => ({ type: t.type, amount: t.amount, currency: t.currency }));
+      return rows.map((t) => ({ type: t.type, amount: t.amount, currency: t.currency, recurring_id: t.recurring_id }));
     },
     enabled: !!userId,
   });
@@ -245,8 +266,9 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
         return sum + amountInPrimary;
       }, 0);
 
-    const expensesThisMonth = transactions
-      .filter(t => t.type === "expense")
+    const subscriptionIds = new Set(subscriptions.map((subscription) => subscription.id));
+    const manualExpensesThisMonth = transactions
+      .filter(t => t.type === "expense" && !t.recurring_id?.startsWith("subscription") && !subscriptionIds.has(t.recurring_id || ""))
       .reduce((sum, t) => {
         const txCurrency = t.currency || "USD";
         const amountInPrimary = convertToPrimary(Number(t.amount), txCurrency);
@@ -262,31 +284,46 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
         return sum + amountInPrimary;
       }, 0);
 
-    const expensesLastMonth = lastMonthTransactions
-      .filter(t => t.type === "expense")
+    const manualExpensesLastMonth = lastMonthTransactions
+      .filter(t => t.type === "expense" && !t.recurring_id?.startsWith("subscription") && !subscriptionIds.has(t.recurring_id || ""))
       .reduce((sum, t) => {
         const txCurrency = t.currency || "USD";
         const amountInPrimary = convertToPrimary(Number(t.amount), txCurrency);
         return sum + amountInPrimary;
       }, 0);
 
+    // Subscriptions are recurring expenses. Keep them as subscription records
+    // (no auto-created transactions) but include their monthly burden in overview math.
+    const subscriptionExpenseFor = (
+      subscription: Subscription,
+      rows: Array<Pick<Transaction, "type" | "amount" | "currency" | "recurring_id">>,
+    ) => {
+      const actuals = rows.filter((row) => row.type === "expense" && row.recurring_id === subscription.id);
+      if (actuals.length > 0) {
+        return actuals.reduce(
+          (sum, row) => sum + convertToPrimary(Number(row.amount), row.currency || "USD"),
+          0,
+        );
+      }
+      return subscriptionMonthlyAmount(subscription, convertToPrimary);
+    };
+    const subscriptionsMonthly = subscriptions.reduce(
+      (sum, subscription) => sum + subscriptionExpenseFor(subscription, transactions),
+      0,
+    );
+    const subscriptionsLastMonth = subscriptions.reduce(
+      (sum, subscription) => sum + subscriptionExpenseFor(subscription, lastMonthTransactions),
+      0,
+    );
+    const expensesThisMonth = manualExpensesThisMonth + subscriptionsMonthly;
+    const expensesLastMonth = manualExpensesLastMonth + subscriptionsLastMonth;
     const netBalance = incomeThisMonth - expensesThisMonth;
-    
+
     // Convert account balances to primary currency
     const totalBalance = accounts.reduce((sum, a) => {
       const accCurrency = a.currency || "USD";
       const balanceInPrimary = convertToPrimary(Number(a.current_balance), accCurrency);
       return sum + balanceInPrimary;
-    }, 0);
-
-    // Convert subscriptions to primary currency (including weekly)
-    const subscriptionsMonthly = subscriptions.reduce((sum, s) => {
-      const subCurrency = s.currency || "USD";
-      const amountInPrimary = convertToPrimary(Number(s.amount), subCurrency);
-      if (s.billing_cycle === "monthly") return sum + amountInPrimary;
-      if (s.billing_cycle === "yearly") return sum + amountInPrimary / 12;
-      if (s.billing_cycle === "weekly") return sum + amountInPrimary * 4.33;
-      return sum + amountInPrimary; // default treat as monthly
     }, 0);
 
     // Fix: Handle 0 → nonzero transition (show 100% instead of 0%)
@@ -326,7 +363,23 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       return convert(amount, fromCurrency, primaryCurrency);
     };
 
-    const expenseTransactions = transactions.filter(t => t.type === "expense");
+    const subscriptionIds = new Set(subscriptions.map((subscription) => subscription.id));
+    const expenseTransactions = transactions.filter(
+      (t) => t.type === "expense" && !t.recurring_id?.startsWith("subscription") && !subscriptionIds.has(t.recurring_id || ""),
+    );
+    const subscriptionsMonthly = subscriptions.reduce((sum, subscription) => {
+      const actuals = transactions.filter(
+        (transaction) => transaction.type === "expense" && transaction.recurring_id === subscription.id,
+      );
+      if (actuals.length > 0) {
+        return sum + actuals.reduce(
+          (actualSum, transaction) =>
+            actualSum + convertToPrimary(Number(transaction.amount), transaction.currency || "USD"),
+          0,
+        );
+      }
+      return sum + subscriptionMonthlyAmount(subscription, convertToPrimary);
+    }, 0);
     
     const breakdown = expenseTransactions.reduce((acc, t) => {
       const categoryId = t.category_id || "uncategorized";
@@ -346,6 +399,17 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       return acc;
     }, {} as Record<string, CategoryBreakdown>);
 
+    if (subscriptionsMonthly > 0) {
+      breakdown.subscriptions = {
+        category: "Subscriptions",
+        categoryMy: null,
+        icon: "CreditCard",
+        color: "#8B5CF6",
+        amount: subscriptionsMonthly,
+        percentage: 0,
+      };
+    }
+
     const totalExpenses = Object.values(breakdown).reduce((sum, item) => sum + item.amount, 0);
 
     return Object.values(breakdown)
@@ -354,7 +418,7 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
         percentage: totalExpenses > 0 ? (item.amount / totalExpenses) * 100 : 0,
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [transactions, primaryCurrency, convert]);
+  }, [transactions, subscriptions, primaryCurrency, convert]);
 
   // Add transaction mutation
   const addTransactionMutation = useMutation({
@@ -372,12 +436,14 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       queryClient.invalidateQueries({ queryKey: ["flowstate-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["flowstate-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["flowstate-income-intel"] });
-      queryClient.invalidateQueries({ queryKey: ["flowstate-source-flow"] });      queryClient.invalidateQueries({ queryKey: ["flowstate-goal"] });
+      queryClient.invalidateQueries({ queryKey: ["flowstate-source-flow"] });
+      queryClient.invalidateQueries({ queryKey: ["flowstate-goal"] });
+      queryClient.invalidateQueries({ queryKey: ["flowstate-plan"] });
       queryClient.invalidateQueries({ queryKey: ["spending-calendar"] });
       toast.success("Transaction added successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to add transaction");
+    onError: (error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Failed to add transaction"));
     },
   });
 
@@ -391,8 +457,8 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       queryClient.invalidateQueries({ queryKey: ["flowstate-accounts"] });
       toast.success("Account added successfully");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to add account");
+    onError: (error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Failed to add account"));
     },
   });
 
@@ -406,12 +472,14 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       queryClient.invalidateQueries({ queryKey: ["flowstate-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["flowstate-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["flowstate-income-intel"] });
-      queryClient.invalidateQueries({ queryKey: ["flowstate-source-flow"] });      queryClient.invalidateQueries({ queryKey: ["flowstate-goal"] });
+      queryClient.invalidateQueries({ queryKey: ["flowstate-source-flow"] });
+      queryClient.invalidateQueries({ queryKey: ["flowstate-goal"] });
+      queryClient.invalidateQueries({ queryKey: ["flowstate-plan"] });
       queryClient.invalidateQueries({ queryKey: ["spending-calendar"] });
       toast.success("Transaction deleted");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to delete transaction");
+    onError: (error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Failed to delete transaction"));
     },
   });
 
@@ -424,8 +492,8 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       queryClient.invalidateQueries({ queryKey: ["flowstate-accounts"] });
       toast.success("Account deleted");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to delete account");
+    onError: (error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Failed to delete account"));
     },
   });
 
@@ -439,8 +507,8 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       queryClient.invalidateQueries({ queryKey: ["flowstate-accounts"] });
       toast.success("Default account updated");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to set default account");
+    onError: (error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Failed to set default account"));
     },
   });
 
@@ -458,8 +526,8 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       queryClient.invalidateQueries({ queryKey: ["flowstate-subscriptions"] });
       toast.success("Subscription added");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to add subscription");
+    onError: (error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Failed to add subscription"));
     },
   });
 
@@ -472,8 +540,8 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       queryClient.invalidateQueries({ queryKey: ["flowstate-subscriptions"] });
       toast.success("Subscription updated");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to update subscription");
+    onError: (error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Failed to update subscription"));
     },
   });
 
@@ -486,8 +554,8 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       queryClient.invalidateQueries({ queryKey: ["flowstate-subscriptions"] });
       toast.success("Subscription deleted");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to delete subscription");
+    onError: (error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Failed to delete subscription"));
     },
   });
 
@@ -511,12 +579,14 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
       queryClient.invalidateQueries({ queryKey: ["flowstate-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["flowstate-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["flowstate-income-intel"] });
-      queryClient.invalidateQueries({ queryKey: ["flowstate-source-flow"] });      queryClient.invalidateQueries({ queryKey: ["flowstate-goal"] });
+      queryClient.invalidateQueries({ queryKey: ["flowstate-source-flow"] });
+      queryClient.invalidateQueries({ queryKey: ["flowstate-goal"] });
+      queryClient.invalidateQueries({ queryKey: ["flowstate-plan"] });
       queryClient.invalidateQueries({ queryKey: ["spending-calendar"] });
       toast.success("Transaction updated");
     },
-    onError: (error: any) => {
-      toast.error(error.message || "Failed to update transaction");
+    onError: (error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Failed to update transaction"));
     },
   });
 
@@ -527,6 +597,7 @@ export function useFlowState(userId: string | undefined, primaryCurrency: string
     queryClient.invalidateQueries({ queryKey: ["flowstate-transactions", userId] });
     queryClient.invalidateQueries({ queryKey: ["flowstate-subscriptions", userId] });
     queryClient.invalidateQueries({ queryKey: ["flowstate-settings", userId] });
+    queryClient.invalidateQueries({ queryKey: ["flowstate-plan", userId] });
   }, [queryClient, userId]);
 
   const isLoading = accountsLoading || categoriesLoading || transactionsLoading || subscriptionsLoading;
@@ -680,8 +751,7 @@ export function useFlowStateDailyTrend(userId: string | undefined, primaryCurren
       
       // Sum transactions per day with currency conversion
       data.forEach(tx => {
-        const txDate = new Date(tx.transaction_date);
-        const day = txDate.getDate().toString();
+        const day = Number(transactionDateKey(tx.transaction_date).slice(8)).toString();
         const txCurrency = tx.currency || "USD";
         
         const amountInPrimary = txCurrency === primaryCurrency

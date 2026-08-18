@@ -2,15 +2,13 @@ import type { CSSProperties } from "react";
 import {
   Magnifer,
   AddSquare,
-  AddFolder,
   AltArrowDown,
   FolderWithFiles,
   ShareCircle,
   CheckCircle,
   CloseCircle,
   Diskette,
-  DoubleAltArrowDown,
-  DoubleAltArrowUp,
+  Home,
 } from "@solar-icons/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,116 +22,79 @@ import {
 import type { VaultInfo } from "@/repositories/contracts/vault";
 
 interface SidebarHeaderProps {
-  showSidebar: boolean;
+  isMobile: boolean;
   isDesktopShell: boolean;
-  sidebarWidth: number;
   draggableRegion: CSSProperties;
   activeVault: VaultInfo | null;
   recentVaults: VaultInfo[];
   isVaultBusy: boolean;
   onSearch: () => void;
-  onNewNote: () => void;
-  onNewFolder: () => void;
   onOpenVault: () => void;
   onCreateVault: () => void;
   onRevealVault: () => void;
   onSwitchVault: (path: string) => void;
   onForgetVault: (path: string) => void;
-  onExpandAll: () => void;
-  onCollapseAll: () => void;
+  onHome: () => void;
 }
 
-// Sidebar top chrome: the search/new/folder icon row (with the macOS traffic-light gutter strip)
-// and the vault dropdown + expand/collapse. Extracted verbatim from the workspace host.
+// Search-first sidebar chrome. Creation stays available from the repository
+// context menu, command palette, and editor tab menu instead of competing here.
 export function SidebarHeader({
-  showSidebar,
+  isMobile,
   isDesktopShell,
-  sidebarWidth,
   draggableRegion,
   activeVault,
   recentVaults,
   isVaultBusy,
   onSearch,
-  onNewNote,
-  onNewFolder,
   onOpenVault,
   onCreateVault,
   onRevealVault,
   onSwitchVault,
   onForgetVault,
-  onExpandAll,
-  onCollapseAll,
+  onHome,
 }: SidebarHeaderProps) {
   return (
-    <div className="shrink-0 px-3 pt-0 pb-2.5 select-none">
-      {/* Traffic-light / button toolbar row */}
-      <div className="h-[44px] flex items-center gap-0.5 shrink-0" style={draggableRegion}>
+    <div className="sidebar-header shrink-0 px-3 pb-2 select-none">
+      {/* Native titlebar gutter. High-frequency actions live with the vault below. */}
+      <div className="sidebar-native-titlebar-row h-[44px] flex items-center gap-0.5 shrink-0" style={draggableRegion}>
         {/* In macOS Electron shell (isDesktopShell), OS renders interactive native traffic lights.
             Reserve safe gutter so native buttons don't overlap HTML elements. On web/PWA render decorative dots. */}
-        {isDesktopShell ? (
-          <div className="w-[68px] shrink-0" aria-hidden="true" />
+        {isMobile ? (
+          <button type="button" className="sidebar-mobile-home" onClick={onHome} aria-label="Open E.V home">
+            <Home className="h-4 w-4" />
+            <span>E.V Home</span>
+          </button>
+        ) : isDesktopShell ? (
+          <div className="mobile-window-controls w-[68px] shrink-0" aria-hidden="true" />
         ) : (
-          <div className="flex items-center gap-2 pl-1 pr-3" aria-hidden="true">
+          <div className="mobile-window-controls flex items-center gap-2 pl-1 pr-3" aria-hidden="true">
             <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
             <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
             <span className="h-3 w-3 rounded-full bg-[#28c840]" />
           </div>
         )}
-        {/* Toolbar buttons — opt OUT of the window-drag region, or macOS eats
-            the clicks (the row above is -webkit-app-region: drag for the title bar). */}
-        <div className="ml-auto flex items-center gap-0.5" style={{ WebkitAppRegion: "no-drag" } as CSSProperties}>
-          <Button
-            title="Search notes  (⌘ K)"
-            aria-label="Search notes"
-            variant="ghost"
-            size="icon"
-            className="h-[34px] w-[34px] rounded-[11px] bg-transparent text-[#c4c4c6] hover:bg-[rgba(255,255,255,0.07)] hover:text-[#ededed] transition-colors duration-[130ms] flex items-center justify-center"
-            onClick={onSearch}
-          >
-            <Magnifer className="h-4 w-4" />
-          </Button>
-          <Button
-            title="New note"
-            aria-label="New note"
-            variant="ghost"
-            size="icon"
-            className="h-[34px] w-[34px] rounded-[11px] bg-transparent text-[#c4c4c6] hover:bg-[rgba(255,255,255,0.07)] hover:text-[#ededed] transition-colors duration-[130ms] flex items-center justify-center"
-            onClick={onNewNote}
-          >
-            <AddSquare className="h-[17px] w-[17px]" />
-          </Button>
-          <Button
-            title="New folder"
-            aria-label="New folder"
-            variant="ghost"
-            size="icon"
-            className="h-[34px] w-[34px] rounded-[11px] bg-transparent text-[#c4c4c6] hover:bg-[rgba(255,255,255,0.07)] hover:text-[#ededed] transition-colors duration-[130ms] flex items-center justify-center"
-            onClick={onNewFolder}
-          >
-            <AddFolder className="h-4 w-4" />
-          </Button>
-        </div>
       </div>
 
-      {/* Vault Switcher & Expand/Collapse controls */}
-      <div className="mt-0.5 flex items-center justify-between gap-2">
+      {/* Codex-style workspace switcher with search in the same visual row. */}
+      <div className="sidebar-vault-row mt-0.5 flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
               title={activeVault?.path || "Switch vault"}
-              className="flex-1 flex items-center justify-between gap-2 border-[0.5px] border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.03)] hover:bg-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.12)] rounded-[11px] p-[6px_9px] transition-all duration-[130ms] text-left min-w-0"
+              className="sidebar-workspace-switcher group flex min-h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded-[var(--bb-radius-control)] border border-transparent bg-transparent px-2 py-1.5 text-left transition-colors duration-[130ms] hover:bg-[var(--bb-sidebar-hover,var(--bb-bg-3))]"
             >
               <div className="min-w-0 flex flex-col gap-0.5">
-                <span className="text-[12.5px] font-semibold text-[#e8e8ea] leading-tight truncate">
+                <span className="truncate text-[14px] font-semibold leading-tight text-[var(--bb-sidebar-text,var(--bb-text-1))]">
                   {activeVault?.name || "BeeBot Vault"}
                 </span>
-                <span className="flex items-center gap-1.5 text-[9.5px] font-medium text-[#7a7a7c] leading-none">
+                <span className="flex items-center gap-1.5 text-[10px] font-medium leading-none text-[var(--bb-text-4)]">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#34c759] shrink-0" />
                   <span className="truncate">{activeVault?.noteCount || 0} notes · synced</span>
                 </span>
               </div>
-              <AltArrowDown className="h-[13px] w-[13px] text-[#6a6a6c] hover:text-[#c4c4c6] transition-colors shrink-0" />
+              <AltArrowDown className="h-[13px] w-[13px] shrink-0 text-[var(--bb-text-4)] transition-colors group-hover:text-[var(--bb-text-2)]" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-72">
@@ -179,7 +140,7 @@ export function SidebarHeader({
                         title="Remove from Recent"
                         aria-label="Remove from Recent"
                         onClick={() => onForgetVault(recent.path)}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-[rgba(255,255,255,0.10)] hover:text-[#ededed] group-hover/vault:opacity-100"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-[var(--bb-bg-4)] hover:text-[var(--bb-text-1)] group-hover/vault:opacity-100"
                       >
                         <CloseCircle className="h-3.5 w-3.5" />
                       </button>
@@ -190,28 +151,16 @@ export function SidebarHeader({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-
-        {/* Tree expand / collapse buttons */}
-        <div className="flex items-center gap-0.5 shrink-0">
-          <Button
-            title="Expand all"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-[8px] text-[#9b9b9d] hover:bg-[#1a1a1c] hover:text-[#ededed] transition-colors duration-[130ms] flex items-center justify-center"
-            onClick={onExpandAll}
-          >
-            <DoubleAltArrowDown className="h-[14px] w-[14px]" />
-          </Button>
-          <Button
-            title="Collapse all"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-[8px] text-[#9b9b9d] hover:bg-[#1a1a1c] hover:text-[#ededed] transition-colors duration-[130ms] flex items-center justify-center"
-            onClick={onCollapseAll}
-          >
-            <DoubleAltArrowUp className="h-[14px] w-[14px]" />
-          </Button>
-        </div>
+        <Button
+          title="Search notes  (⌘ K)"
+          aria-label="Search notes"
+          variant="ghost"
+          size="icon"
+          className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[var(--bb-radius-control)] bg-transparent text-[var(--bb-text-3)] transition-colors duration-[130ms] hover:bg-[var(--bb-sidebar-hover,var(--bb-bg-3))] hover:text-[var(--bb-text-1)]"
+          onClick={onSearch}
+        >
+          <Magnifer className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );

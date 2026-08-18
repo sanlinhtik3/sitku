@@ -687,6 +687,8 @@ export function BeeBotChatView({
             <ChatInput
               placeholder={embedded ? "Ask BeeBot about this note..." : undefined}
               promptSuggestions={embedded ? ["Summarize note", "Find related", "Improve writing"] : undefined}
+              draftScope={embedded ? "embedded-note" : "main"}
+              acceptGlobalPrefill={!embedded}
               onSend={handleSendMessage}
               isStreaming={isStreaming}
               onCancel={cancelStreaming}

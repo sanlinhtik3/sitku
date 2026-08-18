@@ -14,6 +14,9 @@ export const TOOL_CONFIG: Record<string, { icon: LucideIcon; label: string; colo
   generate_ai_content: { icon: Sparkles, label: "AI Content", color: "text-purple-400" },
   manage_ai_content: { icon: FileText, label: "My AI Content", color: "text-purple-400" },
   search_knowledge_base: { icon: Search, label: "Knowledge Base", color: "text-amber-500" },
+  query_by_date: { icon: Clock, label: "Notes by Date", color: "text-amber-500" },
+  "notes.query_by_date": { icon: Clock, label: "Notes by Date", color: "text-amber-500" },
+  query_notes_by_date: { icon: Clock, label: "Notes by Date", color: "text-amber-500" },
   search_web: { icon: Globe, label: "Web Search", color: "text-emerald-400" },
   
   // Finance Tools
@@ -134,6 +137,13 @@ export function formatToolSummary(name: string, result: any): string {
       if (result.empty || result.results?.length === 0) return "No results found";
       if (result.results?.length > 0) return `Found ${result.results.length} articles`;
       return "Search completed";
+    }
+    case "query_by_date":
+    case "notes.query_by_date":
+    case "query_notes_by_date": {
+      if (result.error) return typeof result.error === "string" ? result.error : "Query failed";
+      const count = Array.isArray(result.notes) ? result.notes.length : 0;
+      return `Found ${count} note${count !== 1 ? 's' : ''}`;
     }
     case "search_web":
     case "browser_search":

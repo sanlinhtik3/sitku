@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 release
+electron/native/macos/build/
 *.local
 
 # Environment variables — never commit any .env

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CreditCard, Calendar, Bell, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { CreditCard, Calendar, Bell, MoreVertical, Pencil, Trash2 } from "@/components/flowstate/solarIcons";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CurrencyDisplay } from "./ui/CurrencyDisplay";
@@ -48,7 +48,7 @@ export function FlowStateSubscriptions({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flowstate-subscriptions-view space-y-[14px]">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -57,7 +57,7 @@ export function FlowStateSubscriptions({
         </div>
         <Button
           size="sm"
-          className="gap-1.5 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700"
+          className="flowstate-accent-action gap-1.5"
           onClick={() => setAddOpen(true)}
         >
           <CreditCard className="h-4 w-4" />
@@ -66,7 +66,7 @@ export function FlowStateSubscriptions({
       </div>
 
       {/* Monthly Total */}
-      <div className="rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-500/10 to-pink-500/10 backdrop-blur-xl p-4">
+      <div className="flowstate-glass flowstate-subscription-total">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-muted-foreground font-medium mb-1">Monthly Subscriptions</p>
@@ -80,7 +80,7 @@ export function FlowStateSubscriptions({
       </div>
 
       {/* Subscription List */}
-      <div className="space-y-2">
+      <div className="flowstate-glass flowstate-subscription-list">
         {activeSubscriptions.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <CreditCard className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -91,7 +91,7 @@ export function FlowStateSubscriptions({
           activeSubscriptions.map((sub) => (
             <div
               key={sub.id}
-              className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm hover:bg-card/80 transition-colors"
+              className="flowstate-subscription-row"
             >
               <div
                 className="h-10 w-10 rounded-lg flex items-center justify-center text-lg"

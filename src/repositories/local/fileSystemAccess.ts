@@ -2,6 +2,7 @@ import type {
   ListNotesInput,
   ListVaultEntriesInput,
   NoteFile,
+  NoteVersion,
   NotesRepository,
   RenamePathInput,
   VaultEntry,
@@ -10,6 +11,7 @@ import type {
   WriteNoteInput,
 } from "@/repositories/contracts";
 import { hashContent, normalizeNotePath, titleFromContent, titleFromPath } from "./browserLocal";
+import { noteStore, type NoteRecord } from "./noteStore";
 
 /**
  * Browser "open a real device folder" support via the File System Access API.
@@ -244,9 +246,62 @@ async function resolveParentDir(root: DirHandle, path: string, create: boolean):
 }
 
 // ── Notes repository backed by the File System Access API ──
-class FsaNotesRepository implements NotesRepository {
+export class FsaNotesRepository implements NotesRepository {
+  private channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("beebot.noteStore.sync") : null;
+  private recoveryCheckedForVault = new Set<string>();
+
+  constructor(private readonly getRoot: () => DirHandle = requireHandle) {}
+
+  private historyPath(root: DirHandle, notePath: string) {
+    return `fsa:${root.name}:${normalizeNotePath(notePath)}`;
+  }
+
+  private async restoreEmergencyRecovery(root: DirHandle) {
+    if (this.recoveryCheckedForVault.has(root.name)) return;
+    this.recoveryCheckedForVault.add(root.name);
+    try {
+      const raw = localStorage.getItem("beebot.emergency_recovery");
+      if (!raw) return;
+      const recovery = JSON.parse(raw) as {
+        backend?: string;
+        vaultName?: string;
+        path?: string;
+        content?: string;
+        expectedHash?: string;
+        mtimeMs?: number;
+      };
+      if (recovery.backend !== "fsa" || recovery.vaultName !== root.name || !recovery.path || typeof recovery.content !== "string") return;
+
+      const current = await this.readNote(recovery.path);
+      if (recovery.expectedHash && current?.contentHash !== recovery.expectedHash) return;
+
+      const notePath = normalizeNotePath(recovery.path);
+      const { parent, name } = await resolveParentDir(root, notePath, true);
+      const writable = await (await parent.getFileHandle(name, { create: true })).createWritable();
+      await writable.write(recovery.content);
+      await writable.close();
+      const now = recovery.mtimeMs || Date.now();
+      const record: NoteRecord = {
+        content: recovery.content,
+        ctimeMs: current?.ctimeMs ?? now,
+        mtimeMs: now,
+        contentHash: await hashContent(recovery.content),
+        title: titleFromContent(notePath, recovery.content),
+      };
+      await noteStore.snapshotVersion(this.historyPath(root, notePath), record);
+      localStorage.removeItem("beebot.emergency_recovery");
+    } catch (error) {
+      console.error("[FsaNotesRepository] recovery restore failed", error);
+    }
+  }
+
+  private notify(paths: string[]) {
+    try { this.channel?.postMessage({ paths }); } catch { /* best-effort cross-tab notification */ }
+  }
+
   async listEntries(input: ListVaultEntriesInput = {}): Promise<VaultEntry[]> {
-    const root = requireHandle();
+    const root = this.getRoot();
+    await this.restoreEmergencyRecovery(root);
     const entries: VaultEntry[] = [];
     const query = String(input.query || "").trim().toLowerCase();
 
@@ -290,28 +345,78 @@ class FsaNotesRepository implements NotesRepository {
 
   async listNotes(input: ListNotesInput = {}): Promise<NoteFile[]> {
     const entries = await this.listEntries();
-    const notes = entries.filter((entry) => entry.kind === "note");
+    let notes = entries.filter((entry) => entry.kind === "note");
+    if (input.createdAfter != null) {
+      notes = notes.filter((entry) => (entry.ctimeMs ?? entry.mtimeMs ?? 0) >= input.createdAfter!);
+    }
+    if (input.modifiedAfter != null) {
+      notes = notes.filter((entry) => (entry.mtimeMs ?? 0) >= input.modifiedAfter!);
+    }
+    if (input.sortBy) {
+      notes.sort((a, b) => {
+        const valA = input.sortBy === "ctime" ? (a.ctimeMs ?? a.mtimeMs ?? 0) : input.sortBy === "title" ? (a.title || a.path) : (a.mtimeMs ?? 0);
+        const valB = input.sortBy === "ctime" ? (b.ctimeMs ?? b.mtimeMs ?? 0) : input.sortBy === "title" ? (b.title || b.path) : (b.mtimeMs ?? 0);
+        if (valA < valB) return input.sortOrder === "asc" ? -1 : 1;
+        if (valA > valB) return input.sortOrder === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
     const limited = notes.slice(0, input.limit || 500);
     return limited.map((entry) => ({
       path: entry.path,
       title: entry.title || titleFromPath(entry.path),
       content: "",
+      ctimeMs: entry.ctimeMs,
       mtimeMs: entry.mtimeMs,
     }));
   }
 
+  async queryByDate(input: import("../contracts/notes").QueryByDateInput = {}): Promise<NoteFile[]> {
+    const dateRange = String(input.dateRange || "today").toLowerCase();
+    const action = String(input.action || "modified").toLowerCase();
+    const now = new Date();
+    let after = 0;
+    if (dateRange === "today") {
+      after = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    } else if (dateRange === "yesterday") {
+      after = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
+    } else if (dateRange === "this_week") {
+      after = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    } else if (dateRange === "this_month") {
+      after = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+    } else if (typeof input.createdAfter === "number") {
+      after = input.createdAfter;
+    } else if (typeof input.modifiedAfter === "number") {
+      after = input.modifiedAfter;
+    }
+    const filter = action === "created"
+      ? { createdAfter: after, sortBy: "ctime" as const, sortOrder: "desc" as const }
+      : { modifiedAfter: after, sortBy: "mtime" as const, sortOrder: "desc" as const };
+    return this.listNotes({ ...filter, limit: input.limit || 500 });
+  }
+
   async readNote(path: string): Promise<NoteFile | null> {
-    const root = requireHandle();
+    const root = this.getRoot();
     const notePath = normalizeNotePath(path);
     try {
       const { parent, name } = await resolveParentDir(root, notePath, false);
       const fileHandle = await parent.getFileHandle(name);
       const file = await fileHandle.getFile();
       const content = await file.text();
+      let ctimeMs = file.lastModified;
+      const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (fmMatch) {
+        const createdMatch = fmMatch[1].match(/^created:\s*(.+)$/m);
+        if (createdMatch) {
+          const parsed = Date.parse(createdMatch[1].trim());
+          if (!isNaN(parsed) && parsed > 0) ctimeMs = Math.min(ctimeMs, parsed);
+        }
+      }
       return {
         path: notePath,
         title: titleFromContent(notePath, content),
         content,
+        ctimeMs,
         mtimeMs: file.lastModified,
         contentHash: await hashContent(content),
       };
@@ -321,44 +426,57 @@ class FsaNotesRepository implements NotesRepository {
   }
 
   async writeNote(input: WriteNoteInput): Promise<NoteFile> {
-    const root = requireHandle();
+    const root = this.getRoot();
     const notePath = normalizeNotePath(input.path);
+    const current = await this.readNote(notePath);
+    if (input.expectedHash && current?.contentHash !== input.expectedHash) {
+      throw new Error("Note changed outside this editor. Reload before saving.");
+    }
     const { parent, name } = await resolveParentDir(root, notePath, true);
     const fileHandle = await parent.getFileHandle(name, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(input.content);
     await writable.close();
-    return {
+    this.notify([notePath]);
+    const now = Date.now();
+    const saved = {
       path: notePath,
       title: titleFromContent(notePath, input.content),
       content: input.content,
-      mtimeMs: Date.now(),
+      ctimeMs: current?.ctimeMs ?? now,
+      mtimeMs: now,
       contentHash: await hashContent(input.content),
     };
+    await noteStore.snapshotVersion(this.historyPath(root, notePath), saved);
+    return saved;
   }
 
   async deleteNote(path: string): Promise<void> {
-    const root = requireHandle();
-    const { parent, name } = await resolveParentDir(root, normalizeNotePath(path), false);
+    const root = this.getRoot();
+    const norm = normalizeNotePath(path);
+    const { parent, name } = await resolveParentDir(root, norm, false);
     await parent.removeEntry(name);
+    this.notify([norm]);
   }
 
   async createFolder(path: string): Promise<VaultEntry> {
-    const root = requireHandle();
+    const root = this.getRoot();
     const segments = splitPath(path);
     await resolveDir(root, segments, true);
     const folderPath = segments.join("/");
+    this.notify([folderPath]);
     return { path: folderPath, name: segments[segments.length - 1] || folderPath, kind: "folder", depth: segments.length - 1 };
   }
 
   async deleteFolder(path: string): Promise<void> {
-    const root = requireHandle();
+    const root = this.getRoot();
     const { parent, name } = await resolveParentDir(root, path, false);
     await parent.removeEntry(name, { recursive: true });
+    this.notify([path]);
   }
 
   async renamePath(input: RenamePathInput): Promise<VaultEntry> {
-    const root = requireHandle();
+    const root = this.getRoot();
     const isNote = input.oldPath.toLowerCase().endsWith(".md");
     if (isNote) {
       const oldPath = normalizeNotePath(input.oldPath);
@@ -367,6 +485,7 @@ class FsaNotesRepository implements NotesRepository {
       if (!existing) throw new Error("Note not found");
       await this.writeNote({ path: newPath, content: existing.content });
       await this.deleteNote(oldPath);
+      this.notify([oldPath, newPath]);
       return { path: newPath, name: titleFromPath(newPath), title: titleFromContent(newPath, existing.content), kind: "note", depth: splitPath(newPath).length - 1 };
     }
 
@@ -391,6 +510,7 @@ class FsaNotesRepository implements NotesRepository {
     await copyDir(splitPath(input.oldPath), splitPath(input.newPath));
     await this.deleteFolder(input.oldPath);
     const segments = splitPath(input.newPath);
+    this.notify([input.oldPath, input.newPath]);
     return { path: input.newPath, name: segments[segments.length - 1] || input.newPath, kind: "folder", depth: segments.length - 1 };
   }
 
@@ -416,7 +536,47 @@ class FsaNotesRepository implements NotesRepository {
     };
     void poll();
     const timer = setInterval(poll, 2500);
-    return { unsubscribe: () => { stopped = true; clearInterval(timer); } };
+
+    const onMsg = (event: MessageEvent) => {
+      onChange(event.data?.paths || []);
+    };
+    if (this.channel) this.channel.addEventListener("message", onMsg);
+
+    return {
+      unsubscribe: () => {
+        stopped = true;
+        clearInterval(timer);
+        if (this.channel) this.channel.removeEventListener("message", onMsg);
+      },
+    };
+  }
+
+  async listVersions(path: string): Promise<NoteVersion[]> {
+    const root = this.getRoot();
+    const notePath = normalizeNotePath(path);
+    const versions = await noteStore.listVersions(this.historyPath(root, notePath));
+    return versions.map((version) => ({ ...version, path: notePath }));
+  }
+
+  getVersionContent(id: number): Promise<string | null> {
+    return noteStore.getVersionContent(id);
+  }
+
+  emergencySaveSync(path: string, content: string, expectedHash?: string): void {
+    try {
+      const root = this.getRoot();
+      localStorage.setItem("beebot.emergency_recovery", JSON.stringify({
+        backend: "fsa",
+        vaultName: root.name,
+        path: normalizeNotePath(path),
+        content,
+        expectedHash,
+        mtimeMs: Date.now(),
+      }));
+      this.notify([normalizeNotePath(path)]);
+    } catch (err) {
+      console.error("[FsaNotesRepository] emergencySaveSync failed", err);
+    }
   }
 }
 

@@ -52,7 +52,7 @@ export function parseQueryInput(input: string): {
   if (lower.includes("stats") || lower.includes("kpi") || lower.includes("dashboard")) type = "stats";
 
   const viewMatch = input.match(/view[:=]\s*(list|table|kanban|calendar|gallery)/i);
-  const view = viewMatch ? (viewMatch[1].toLowerCase() as any) : undefined;
+  const view = viewMatch ? (viewMatch[1].toLowerCase() as "list" | "table" | "kanban" | "calendar" | "gallery") : undefined;
 
   const tagMatch = input.match(/(?:tag[:=]|\s|^)(#[a-zA-Z0-9_-]+)/i);
   const tag = tagMatch ? tagMatch[1] : undefined;
@@ -177,7 +177,7 @@ export function DataviewQueryCard({ spec = "", code = "", notes = [], onOpenNote
             <Database className="h-3.5 w-3.5" />
           </span>
           <span className="font-mono text-xs font-bold uppercase tracking-wider text-[var(--bb-text-1)]">
-            Notion Workspace
+            Data View
           </span>
           <span className="rounded-full bg-[var(--bb-bg-3)] px-2 py-0.5 text-[11px] font-medium text-[var(--bb-text-2)]">
             {query.type.toUpperCase()}

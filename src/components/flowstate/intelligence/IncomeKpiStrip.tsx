@@ -4,7 +4,7 @@
 // No Recharts; eager — always visible the moment the CFO tab opens.
 
 import { Card } from "@/components/ui/card";
-import { Sun, Wallet, Layers, TrendingUp, TrendingDown } from "lucide-react";
+import { Sun, Wallet, Layers, TrendingUp, TrendingDown } from "@/components/flowstate/solarIcons";
 import { cn } from "@/lib/utils";
 
 const fmt = (n: number, cur: string) => {

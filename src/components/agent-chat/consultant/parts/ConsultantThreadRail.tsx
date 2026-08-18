@@ -67,11 +67,9 @@ Active dashboard period is injected below when available.
 `;
 
 const SUGGESTIONS = [
-  "Show my last 7 days KPI dashboard and tell me the bottleneck",
-  "Run my weekly performance analysis vs baseline",
-  "Log today's Facebook daily snapshot",
-  "Forecast my next 30 days views and revenue",
-  "Give me CFO + productivity hacks from my current numbers",
+  "Which team member should own TikTok next month?",
+  "Forecast next 30 days if we fix the cadence slip",
+  "Break down why cost per view dropped 26%",
 ];
 
 interface Props {
@@ -141,22 +139,19 @@ export function ConsultantThreadRail({ userId, range, periodLabel, onClose }: Pr
   const isEmpty = chat.messages.length === 0 && !chat.streamingContent;
 
   return (
-    <div className="consultant-card flex flex-col h-full min-h-0 overflow-hidden">
+    <div className="consultant-card consultant-fade flex h-full min-h-[520px] flex-col overflow-hidden lg:min-h-0">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border/20 bg-card/20 flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-white/[.06] bg-white/[.018] px-4 py-3.5">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="consultant-control h-8 w-8 rounded-[var(--glass-radius-control)] flex items-center justify-center shrink-0">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
+          <div className="consultant-orb flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full text-[#1a1205] [background:radial-gradient(circle_at_34%_28%,#fff2c4,var(--consultant-ac)_62%,#8a7326)] shadow-[0_0_20px_-2px_color-mix(in_oklab,var(--consultant-ac)_60%,transparent)]">
+            <Sparkles className="h-3.5 w-3.5 text-[var(--consultant-ac)]" />
           </div>
           <div className="min-w-0">
-            <div className="text-xs font-semibold truncate">Strategy Consultant</div>
-            <div className="text-[10px] text-muted-foreground">SWOT · Pareto · Porter · Scenarios</div>
+            <div className="truncate text-[12.5px] font-semibold text-[#ededef]">Strategist</div>
+            <div className="text-[10.5px] text-[#8a8a8e]">SWOT · Pareto · Scenarios</div>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full" onClick={startNew} title="New thread">
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
           {onClose && (
             <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full" onClick={onClose} title="Close consultant chat">
               <X className="h-3.5 w-3.5" />
@@ -166,18 +161,19 @@ export function ConsultantThreadRail({ userId, range, periodLabel, onClose }: Pr
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+      <div ref={scrollRef} className="consultant-scroll flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3">
         {isEmpty && !chat.isLoadingMessages && (
-          <div className="text-center pt-6 pb-2 space-y-3">
-            <div className="text-xs text-muted-foreground">
-              Ask about your posts, metrics, ROI, or marketing strategy.
+          <div className="pb-2 pt-5 space-y-3">
+            <div className="px-1 text-[11.5px] leading-relaxed text-[#8a8a8e]">
+              Ask for a diagnosis, forecast, or the next highest-leverage move.
             </div>
-            <div className="grid gap-1.5">
-              {SUGGESTIONS.map((s) => (
+            <div className="grid gap-2">
+              {SUGGESTIONS.map((s, index) => (
                 <button
                   key={s}
                   onClick={() => handleSend(s)}
-                  className="text-left text-[11px] px-3 py-2 rounded-lg consultant-control hover:border-primary/30 hover:bg-primary/5 transition"
+                  className="consultant-control consultant-press consultant-fade rounded-[12px] px-3 py-2.5 text-left text-[11px] leading-snug text-[#a4a4aa] hover:border-[color-mix(in_oklab,var(--consultant-ac)_25%,transparent)] hover:bg-[color-mix(in_oklab,var(--consultant-ac)_5%,transparent)] hover:text-[#ededef]"
+                  style={{ animationDelay: `${index * 55}ms` }}
                 >
                   {s}
                 </button>
@@ -203,15 +199,15 @@ export function ConsultantThreadRail({ userId, range, periodLabel, onClose }: Pr
       </div>
 
       {/* Composer */}
-      <div className="p-2.5 border-t border-border/20 bg-card/20">
-        <div className="flex items-end gap-2">
+      <div className="border-t border-white/[.06] p-3">
+        <div className="consultant-control flex h-[52px] items-center gap-2 rounded-2xl px-2 pl-[15px]">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Ask the consultant…"
+            placeholder="Ask the strategist…"
             rows={1}
-            className="resize-none min-h-[40px] max-h-32 consultant-control text-xs rounded-xl"
+            className="!min-h-[34px] h-[34px] max-h-[34px] flex-1 resize-none border-0 bg-transparent px-0 py-2 text-[12.5px] shadow-none placeholder:text-[#6a6a6c] focus-visible:ring-0"
           />
           {chat.isStreaming ? (
             <Button size="icon" variant="destructive" onClick={chat.cancelStreaming} className="h-10 w-10 rounded-xl shrink-0">
@@ -222,7 +218,7 @@ export function ConsultantThreadRail({ userId, range, periodLabel, onClose }: Pr
               size="icon"
               onClick={() => handleSend()}
               disabled={!input.trim()}
-              className="h-10 w-10 rounded-[var(--glass-radius-control)] bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
+              className="consultant-press h-[34px] w-[34px] shrink-0 rounded-full bg-[var(--consultant-ac)] text-[#1a1205] hover:bg-[#f8dc84]"
             >
               <Send className="h-3.5 w-3.5" />
             </Button>
@@ -251,10 +247,10 @@ function MessageBubble({
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div className={cn(
-        "max-w-[88%] rounded-[var(--glass-radius-card)] px-3 py-2 text-xs leading-relaxed",
+        "max-w-[88%] rounded-[15px] px-3 py-2.5 text-xs leading-relaxed",
         isUser
-          ? "bg-primary/[0.12] border border-primary/25 text-foreground rounded-br-sm"
-          : "bg-card/35 border border-border/20 text-foreground/95 rounded-bl-sm",
+          ? "border border-[color-mix(in_oklab,var(--consultant-ac)_22%,transparent)] bg-[color-mix(in_oklab,var(--consultant-ac)_9%,transparent)] text-[#ededef] rounded-br-sm"
+          : "border border-white/[.065] bg-white/[.035] text-[#d7d7da] rounded-bl-sm",
         isError && "border-rose-500/40 bg-rose-500/10",
       )}>
         {isUser ? (

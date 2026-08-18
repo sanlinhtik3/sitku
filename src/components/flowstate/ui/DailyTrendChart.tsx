@@ -10,7 +10,7 @@ import {
   Legend,
 } from "recharts";
 import { cn } from "@/lib/utils";
-import { Loader2, TrendingUp, TrendingDown } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown } from "@/components/flowstate/solarIcons";
 
 export interface DailyTrend {
   day: string;

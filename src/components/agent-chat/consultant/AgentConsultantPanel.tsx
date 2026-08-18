@@ -1,10 +1,9 @@
-import { lazy, Suspense, useState, useMemo, useEffect } from "react";
+import { lazy, Suspense, useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/hooks/useAuth";
 import {
   consultantRangeForPreset,
   type ConsultantRangePreset,
-  useConsultantDashboard,
+  useConsultantWeeklyAnalysis,
 } from "@/hooks/useConsultantData";
 import { WelcomeHeader } from "./parts/WelcomeHeader";
 import { OverviewKpiGrid } from "./parts/OverviewKpiGrid";
@@ -13,6 +12,8 @@ import { AddRecordDrawer } from "./parts/AddRecordDrawer";
 import { ConsultantThreadRail } from "./parts/ConsultantThreadRail";
 import { CfoProductivityPanel } from "./parts/CfoProductivityPanel";
 import { DailyPostList } from "./parts/DailyPostList";
+import { GrowthPulse } from "./parts/GrowthPulse";
+import { TeamPerformanceTable } from "./parts/TeamPerformanceTable";
 
 // Recharts (~499KB) lazy-loaded — pulled in only when the consultant panel is open.
 const SalesBarChart = lazy(() => import("./parts/SalesBarChart").then((m) => ({ default: m.SalesBarChart })));
@@ -27,43 +28,24 @@ interface Props {
   onClose: () => void;
 }
 
-interface UserMetadata {
-  display_name?: string;
-  full_name?: string;
-  name?: string;
-}
-
 export function AgentConsultantPanel({ userId, onClose }: Props) {
-  const { user } = useAuth();
   const qc = useQueryClient();
-
-  // ponytail: auto-activate eco-mode to kill heavy GPU backdrop-blurs when full-screen modal mounts
-  useEffect(() => {
-    document.documentElement.setAttribute("data-eco-mode", "true");
-    return () => document.documentElement.removeAttribute("data-eco-mode");
-  }, []);
 
   const [rangePreset, setRangePreset] = useState<ConsultantRangePreset>("this_week");
   const rangeSelection = useMemo(() => consultantRangeForPreset(rangePreset), [rangePreset]);
   const range = rangeSelection.range;
-  const dash = useConsultantDashboard(range);
+  const analysis = useConsultantWeeklyAnalysis(range);
 
   const [addOpen, setAddOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
 
-  const meta = (user?.user_metadata ?? {}) as UserMetadata;
-  const userName =
-    meta.display_name || meta.full_name || meta.name ||
-    user?.email?.split("@")[0] || "there";
-
   const refresh = () => qc.invalidateQueries({ queryKey: ["agentic"] });
 
   return (
-    <div className="consultant-shell relative flex-1 min-h-0 m-1 sm:m-1.5 rounded-glass-container overflow-hidden flex flex-col">
-      <div className="consultant-grid-bg pointer-events-none absolute inset-0 opacity-25" />
-      <div className="relative z-10 flex flex-col min-h-0 flex-1">
+    <div className="consultant-shell relative flex-1 min-h-0 overflow-hidden flex flex-col">
+      <div className="consultant-grid-bg pointer-events-none absolute inset-0" />
+      <div className="relative z-10 mx-auto flex w-full max-w-[1400px] flex-col min-h-0 flex-1 px-3 py-3 sm:px-5 sm:pb-4 sm:pt-[18px]">
         <WelcomeHeader
-          userName={userName}
           rangePreset={rangePreset}
           onRangePresetChange={setRangePreset}
           rangeLabel={rangeSelection.label}
@@ -74,25 +56,29 @@ export function AgentConsultantPanel({ userId, onClose }: Props) {
           onToggleChat={() => setChatOpen((open) => !open)}
         />
 
-        <div className={`flex-1 min-h-0 grid grid-cols-1 gap-3 p-3 overflow-hidden ${chatOpen ? "lg:grid-cols-[1fr_minmax(360px,38%)]" : "lg:grid-cols-1"}`}>
+        <div className={`flex-1 min-h-0 grid grid-cols-1 gap-[14px] pt-[14px] overflow-hidden ${chatOpen ? "lg:grid-cols-[1fr_minmax(330px,33%)]" : "lg:grid-cols-1"}`}>
           {/* DASHBOARD COLUMN */}
-          <div className="min-h-0 overflow-y-auto pr-1 space-y-3">
-            <OverviewKpiGrid data={dash.data} periodLabel={rangeSelection.label} />
-            <Suspense fallback={<ChartSkeleton />}>
-              <KpiIntelligenceChart range={range} dashboard={dash.data} periodLabel={rangeSelection.label} />
-            </Suspense>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+          <div className="consultant-scroll ml-0.5 min-h-0 space-y-[14px] overflow-y-auto pr-1">
+            <OverviewKpiGrid analysis={analysis.data} periodLabel={rangeSelection.label} />
+            <GrowthPulse analysis={analysis.data} />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-[14px]">
               <Suspense fallback={<ChartSkeleton />}>
-                <ChannelMixDonut dashboard={dash.data} periodLabel={rangeSelection.label} />
+                <KpiIntelligenceChart analysis={analysis.data} periodLabel={rangeSelection.label} />
               </Suspense>
-              <CfoProductivityPanel range={range} dashboard={dash.data} periodLabel={rangeSelection.label} />
+              <Suspense fallback={<ChartSkeleton />}>
+                <SalesBarChart analysis={analysis.data} periodLabel={rangeSelection.label} />
+              </Suspense>
             </div>
-            <Suspense fallback={<ChartSkeleton />}>
-              <SalesBarChart range={range} periodLabel={rangeSelection.label} />
-            </Suspense>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-              <DailyPostList onAddPost={() => setAddOpen(true)} />
-              <TopPerformersList range={range} periodLabel={rangeSelection.label} />
+            <div className="grid grid-cols-1 gap-[14px] md:grid-cols-3">
+              <CfoProductivityPanel range={range} dashboard={analysis.data?.totals} targets={analysis.data?.targets} periodLabel={rangeSelection.label} />
+              <Suspense fallback={<ChartSkeleton />}>
+                <ChannelMixDonut platformMix={analysis.data?.platformMix} periodLabel={rangeSelection.label} />
+              </Suspense>
+            </div>
+            <TeamPerformanceTable />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-[14px]">
+              <TopPerformersList posts={analysis.data?.topPosts} periodLabel={rangeSelection.label} isLoading={analysis.isLoading} />
+              <DailyPostList lowSignalPosts={analysis.data?.lowSignalPosts ?? []} isLoading={analysis.isLoading} onAddPost={() => setAddOpen(true)} />
             </div>
             <Suspense fallback={<ChartSkeleton />}>
               <ActivityInsightsCard range={range} periodLabel={rangeSelection.label} />

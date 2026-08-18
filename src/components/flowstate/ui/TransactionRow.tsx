@@ -1,50 +1,12 @@
 import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import {
-  Briefcase,
-  Laptop,
-  TrendingUp,
-  Gift,
-  Plus,
-  Utensils,
-  Car,
-  ShoppingBag,
-  Film,
-  Zap,
-  Monitor,
-  Heart,
-  GraduationCap,
-  Home,
-  MoreHorizontal,
-  Trash2,
-  Pencil,
-  LucideIcon,
-  RefreshCw,
-} from "lucide-react";
+import { Trash2, Pencil, RefreshCw } from "@/components/flowstate/solarIcons";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useExchangeRates, currencySymbols } from "@/hooks/useExchangeRates";
+import { parseTransactionLocalDate } from "@/lib/flowstate/financeDates";
 import type { Transaction } from "@/hooks/useFlowState";
-
-// Icon mapping
-const iconMap: Record<string, LucideIcon> = {
-  Briefcase,
-  Laptop,
-  TrendingUp,
-  Gift,
-  Plus,
-  Utensils,
-  Car,
-  ShoppingBag,
-  Film,
-  Zap,
-  Monitor,
-  Heart,
-  GraduationCap,
-  Home,
-  MoreHorizontal,
-  Tag: MoreHorizontal,
-};
+import { CategoryIcon } from "@/components/flowstate/CategoryIcon";
 
 // Get currency symbol helper
 const getCurrencySymbol = (currency: string): string => {
@@ -68,7 +30,6 @@ export const TransactionRow = memo(({
   isDeleting = false,
   compact = false,
 }: TransactionRowProps) => {
-  const Icon = iconMap[transaction.category?.icon || "MoreHorizontal"] || MoreHorizontal;
   const isIncome = transaction.type === "income";
   const categoryColor = transaction.category?.color || "#6B7280";
   
@@ -91,18 +52,13 @@ export const TransactionRow = memo(({
       compact ? "p-2.5" : "p-3"
     )}>
       {/* Category Icon */}
-      <div
-        className={cn(
-          "rounded-xl flex items-center justify-center shrink-0",
-          compact ? "h-9 w-9" : "h-10 w-10"
-        )}
+      <CategoryIcon
+        icon={transaction.category?.icon}
+        color={categoryColor}
+        className={compact ? "h-4 w-4" : "h-5 w-5"}
+        containerClassName={cn("shrink-0 rounded-[var(--radius)]", compact ? "h-9 w-9" : "h-10 w-10")}
         style={{ backgroundColor: `${categoryColor}20` }}
-      >
-        <Icon
-          className={cn(compact ? "h-4 w-4" : "h-5 w-5")}
-          style={{ color: categoryColor }}
-        />
-      </div>
+      />
 
       {/* Details */}
       <div className="flex-1 min-w-0">
@@ -113,7 +69,7 @@ export const TransactionRow = memo(({
           {transaction.description || transaction.category?.name || "Transaction"}
         </p>
         <p className="text-[10px] text-muted-foreground">
-          {transaction.category?.name || "Uncategorized"} • {format(new Date(transaction.transaction_date), "MMM d")}
+          {transaction.category?.name || "Uncategorized"} • {format(parseTransactionLocalDate(transaction.transaction_date), "MMM d")}
         </p>
       </div>
 

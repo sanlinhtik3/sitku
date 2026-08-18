@@ -3,12 +3,12 @@
 // (no growth/engagement). Range-filled with zeros by the hook so the x-axis is
 // stable across "today/week/month/28d/90d" without gaps.
 
-import { Card } from "@/components/ui/card";
 import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine,
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { timelineDayLabel, type DateRange } from "@/lib/consultantHelpers";
 import type { IncomeDayRow } from "@/hooks/useFlowStateIncomeIntelligence";
+import { FuiBadge, FuiChartLegend, FuiMetric, FuiWidget } from "@/design-system/fui";
 
 const fmt = (n: number, cur: string) => {
   const v = n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M`
@@ -33,62 +33,64 @@ export function IncomeNetTimeline({ byDay, range, currency, periodLabel, totalIn
   const rows = byDay.map((r) => ({ ...r, dateLabel: timelineDayLabel(r.date, range) }));
   const hasData = rows.some((r) => r.income > 0 || r.expense > 0);
   const net = totalIncome - totalExpense;
+  const deltaTone = deltaIncomePct == null ? "offline" : deltaIncomePct >= 0 ? "success" : "danger";
 
   return (
-    <Card className="consultant-card p-4">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{periodLabel} Income Timeline</div>
-          <div className="text-sm font-semibold mt-0.5">Daily income · expense · net</div>
-        </div>
-        <div className="text-right shrink-0">
-          <div className="text-[10px] text-muted-foreground">Income vs prev</div>
-          <div className={`text-sm font-semibold tabular-nums ${(deltaIncomePct ?? 0) >= 0 ? "text-emerald-300" : "text-rose-400"}`}>
-            {deltaIncomePct == null ? "—" : `${deltaIncomePct >= 0 ? "+" : ""}${deltaIncomePct.toFixed(1)}%`}
-          </div>
-        </div>
-      </div>
-
-      <div className="h-[260px]">
+    <FuiWidget
+      className="flowstate-income-timeline"
+      eyebrow={`${periodLabel} Income Timeline`}
+      title="Daily income · expense · net"
+      description="Daily movement inside the selected period"
+      action={(
+        <FuiBadge tone={deltaTone}>
+          {deltaIncomePct == null ? "No baseline" : `${deltaIncomePct >= 0 ? "+" : ""}${deltaIncomePct.toFixed(1)}% vs prev`}
+        </FuiBadge>
+      )}
+    >
+      <FuiChartLegend items={[
+        { label: "Income", color: "var(--bb-positive)" },
+        { label: "Expense", color: "var(--bb-negative)" },
+        { label: "Net", color: "var(--bb-info)", dashed: true },
+      ]} className="mb-2" />
+      <div className="flowstate-chart-canvas h-[228px]">
         {!hasData ? (
-          <div className="h-full flex items-center justify-center text-xs text-muted-foreground text-center px-4">
+          <div className="flowstate-chart-empty">
             No transactions in this period.<br/>Add income / expense to unlock the timeline.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={rows}>
-              <CartesianGrid stroke="hsl(var(--border) / 0.14)" vertical={false} />
-              <XAxis dataKey="dateLabel" interval="preserveStartEnd" stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} />
-              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={9} tickLine={false} axisLine={false} width={42} tickFormatter={(v) => fmt(Number(v), currency)} />
+              <CartesianGrid stroke="var(--fui-chart-grid, hsl(var(--border) / 0.14))" vertical={false} />
+              <XAxis dataKey="dateLabel" interval="preserveStartEnd" stroke="var(--bb-text-4)" fontSize={9} tickLine={false} axisLine={false} />
+              <YAxis stroke="var(--bb-text-4)" fontSize={9} tickLine={false} axisLine={false} width={42} tickFormatter={(v) => fmt(Number(v), currency)} />
               <Tooltip
-                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 11, borderRadius: 8 }}
+                contentStyle={{ background: "var(--bb-bg-2)", border: "1px solid var(--bb-border)", color: "var(--bb-text-1)", fontSize: 11, borderRadius: "var(--bb-radius-control)" }}
                 formatter={(v: number, name: string) => [fmt(Number(v), currency), name]}
                 labelFormatter={(l) => `${l}`}
               />
-              <ReferenceLine y={0} stroke="hsl(var(--border))" strokeDasharray="2 4" />
-              <Legend iconType="circle" wrapperStyle={{ fontSize: 10 }} />
-              <Line type="monotone" dataKey="income"  name="Income"  stroke="#22c55e" strokeWidth={2.4} dot={false} activeDot={{ r: 4 }} />
-              <Line type="monotone" dataKey="expense" name="Expense" stroke="#f43f5e" strokeWidth={2.2} dot={false} activeDot={{ r: 4 }} />
-              <Line type="monotone" dataKey="net"     name="Net"     stroke="#38bdf8" strokeWidth={2.0} strokeDasharray="4 3" dot={false} activeDot={{ r: 4 }} />
+              <ReferenceLine y={0} stroke="var(--bb-border)" strokeDasharray="2 4" />
+              <Line type="monotone" dataKey="income"  name="Income"  stroke="var(--bb-positive)" strokeWidth={2.2} dot={false} activeDot={{ r: 4 }} />
+              <Line type="monotone" dataKey="expense" name="Expense" stroke="var(--bb-negative)" strokeWidth={2.0} dot={false} activeDot={{ r: 4 }} />
+              <Line type="monotone" dataKey="net"     name="Net"     stroke="var(--bb-info)" strokeWidth={1.8} strokeDasharray="4 3" dot={false} activeDot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         )}
       </div>
 
-      <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-        <div className="space-y-0.5">
+      <div className="flowstate-chart-summary grid grid-cols-3 gap-2">
+        <div>
           <div>Income</div>
-          <div className="text-emerald-300 text-xs font-semibold tabular-nums">{fmt(totalIncome, currency)}</div>
+          <FuiMetric className="text-[var(--bb-positive)]">{fmt(totalIncome, currency)}</FuiMetric>
         </div>
-        <div className="space-y-0.5">
+        <div>
           <div>Expense</div>
-          <div className="text-rose-400 text-xs font-semibold tabular-nums">{fmt(totalExpense, currency)}</div>
+          <FuiMetric className="text-[var(--bb-negative)]">{fmt(totalExpense, currency)}</FuiMetric>
         </div>
-        <div className="space-y-0.5">
+        <div>
           <div>Net</div>
-          <div className={`${net >= 0 ? "text-sky-300" : "text-rose-400"} text-xs font-semibold tabular-nums`}>{fmt(net, currency)}</div>
+          <FuiMetric className={net >= 0 ? "text-[var(--bb-info)]" : "text-[var(--bb-negative)]"}>{fmt(net, currency)}</FuiMetric>
         </div>
       </div>
-    </Card>
+    </FuiWidget>
   );
 }

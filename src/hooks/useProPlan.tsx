@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export interface ProPlanStatus {
@@ -44,7 +44,7 @@ export const useProPlan = (): ProPlanStatus => {
   const { data: planStatus, isLoading, refetch } = useQuery({
     queryKey: ["pro-plan-status", user?.id],
     queryFn: async () => {
-      if (!user?.id) return null;
+      if (!isSupabaseConfigured || !user?.id) return null;
       
       try {
         const { data, error } = await supabase.rpc('get_user_plan_status', {
@@ -52,17 +52,21 @@ export const useProPlan = (): ProPlanStatus => {
         }) as { data: PlanStatusResponse | null; error: any };
         
         if (error) {
-          console.warn("Plan status fetch failed, using defaults:", error.message);
+          if (isSupabaseConfigured) {
+            console.warn("Plan status fetch failed, using defaults:", error.message || String(error));
+          }
           return null; // Return null, let useMemo handle defaults
         }
         
         return data as PlanStatusResponse;
-      } catch (err) {
-        console.warn("Plan status exception:", err);
+      } catch (err: any) {
+        if (isSupabaseConfigured) {
+          console.warn("Plan status exception:", err?.message || err);
+        }
         return null;
       }
     },
-    enabled: !!user?.id,
+    enabled: isSupabaseConfigured && !!user?.id,
     staleTime: 30 * 1000,
   });
 

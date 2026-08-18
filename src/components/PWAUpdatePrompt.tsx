@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react';
 
 const SW_UPDATE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
-export function PWAUpdatePrompt() {
+function PWAUpdateRegistration() {
   const toastShownRef = useRef(false);
   // Capture the update-interval handle so it can be cleared — otherwise every
   // re-register (dev HMR, SW swap) stacks another interval that runs forever,
@@ -51,4 +51,12 @@ export function PWAUpdatePrompt() {
   }, []);
 
   return null;
+}
+
+export function PWAUpdatePrompt() {
+  const isDesktopRuntime = window.location.protocol === 'file:' || Boolean(
+    (window as unknown as { beebotDesktop?: unknown }).beebotDesktop,
+  );
+
+  return isDesktopRuntime ? null : <PWAUpdateRegistration />;
 }

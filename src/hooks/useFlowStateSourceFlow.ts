@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { financeStore } from "@/repositories/local/financeStore";
 import { useExchangeRates } from "@/hooks/useExchangeRates";
 import { eachDayInRange, type DateRange } from "@/hooks/useConsultantData";
+import { transactionDateKey } from "@/lib/flowstate/financeDates";
 
 const TOP_N = 6;            // bands per side before bucketing into "Other"
 const UNATTRIBUTED = "Unattributed";
@@ -150,7 +151,7 @@ export function useFlowStateSourceFlow(
       }
 
       for (const t of txns) {
-        const d = t.transaction_date?.slice(0, 10);
+        const d = transactionDateKey(t.transaction_date);
         const row = d && rowByDate.get(d);
         if (!row) continue;
         const v = round2(toPrimary(Number(t.amount || 0), t.currency || primaryCurrency));

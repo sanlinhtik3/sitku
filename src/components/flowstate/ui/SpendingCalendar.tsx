@@ -1,11 +1,12 @@
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "@/components/flowstate/solarIcons";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { financeStore } from "@/repositories/local/financeStore";
 import { startOfMonth, endOfMonth, format, addMonths, subMonths, getDaysInMonth, getDay, isToday } from "date-fns";
 import { useExchangeRates, currencySymbols } from "@/hooks/useExchangeRates";
 import { cn } from "@/lib/utils";
+import { transactionDateKey } from "@/lib/flowstate/financeDates";
 
 interface SpendingCalendarProps {
   userId: string;
@@ -21,17 +22,18 @@ export function SpendingCalendar({ userId, primaryCurrency }: SpendingCalendarPr
   const monthStart = useMemo(() => startOfMonth(currentMonth), [currentMonth]);
   const monthEnd = useMemo(() => endOfMonth(currentMonth), [currentMonth]);
 
-  const { data: dailyExpenses = {} } = useQuery({
+  const { data: dailyFlow = {} } = useQuery({
     queryKey: ["spending-calendar", userId, format(monthStart, "yyyy-MM")],
     queryFn: async () => {
       const rows = await financeStore.listTransactions(userId, format(monthStart, "yyyy-MM-dd"), format(monthEnd, "yyyy-MM-dd"));
-      const data = rows.filter((t) => t.type === "expense");
-
-      const grouped: Record<number, number> = {};
-      for (const tx of data) {
-        const day = new Date(tx.transaction_date + "T00:00:00").getDate();
+      const grouped: Record<number, { income: number; expense: number; net: number }> = {};
+      for (const tx of rows) {
+        if (tx.type !== "income" && tx.type !== "expense") continue;
+        const day = Number(transactionDateKey(tx.transaction_date).slice(8));
         const converted = convert(tx.amount, tx.currency || primaryCurrency, primaryCurrency);
-        grouped[day] = (grouped[day] || 0) + converted;
+        grouped[day] ||= { income: 0, expense: 0, net: 0 };
+        grouped[day][tx.type] += converted;
+        grouped[day].net += tx.type === "income" ? converted : -converted;
       }
       return grouped;
     },
@@ -49,43 +51,45 @@ export function SpendingCalendar({ userId, primaryCurrency }: SpendingCalendarPr
   };
 
   const currencySymbol = currencySymbols[primaryCurrency] || primaryCurrency;
+  const monthTotals = useMemo(() => Object.values(dailyFlow).reduce((total, day) => ({
+    income: total.income + day.income,
+    expense: total.expense + day.expense,
+  }), { income: 0, expense: 0 }), [dailyFlow]);
 
   return (
-    <div className="rounded-2xl border border-border/30 bg-card/30 backdrop-blur-xl p-3 sm:p-4">
+    <div className="flowstate-glass flowstate-calendar">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flowstate-calendar-header">
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 rounded-xl hover:bg-muted/50"
+          className="flowstate-calendar-nav"
           onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}
         >
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft className="h-4 w-4" />
         </Button>
-        <h3 className="text-base sm:text-lg font-bold tracking-tight text-foreground">
-          {format(currentMonth, "MMMM yyyy")}
-        </h3>
+        <div className="flowstate-calendar-title"><h3>{format(currentMonth, "MMMM yyyy")}</h3><p>Daily net · tap a day to log</p></div>
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 rounded-xl hover:bg-muted/50"
+          className="flowstate-calendar-nav"
           onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}
         >
-          <ChevronRight className="h-5 w-5" />
+          <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
 
       {/* Day Headers */}
-      <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1.5">
+      <div className="flowstate-calendar-weekdays">
         {DAY_HEADERS.map((day) => (
-          <div key={day} className="text-center text-[10px] sm:text-xs font-semibold text-muted-foreground tracking-wider py-1">
+          <div key={day}>
             {day}
           </div>
         ))}
       </div>
 
       {/* Calendar Grid */}
-      <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+      <div className="flowstate-calendar-grid">
         {/* Empty cells for padding before month starts */}
         {Array.from({ length: firstDayOfWeek }).map((_, i) => (
           <div key={`empty-${i}`} />
@@ -96,33 +100,35 @@ export function SpendingCalendar({ userId, primaryCurrency }: SpendingCalendarPr
           const day = i + 1;
           const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
           const isCurrentDay = isToday(date);
-          const expense = dailyExpenses[day] || 0;
+          const flow = dailyFlow[day] || { income: 0, expense: 0, net: 0 };
 
           return (
             <div
               key={day}
               className={cn(
-                "flex flex-col items-center justify-center rounded-xl border h-10 sm:h-11 lg:h-12 p-0.5 sm:p-1 transition-all duration-200",
+                "flowstate-calendar-day",
                 isCurrentDay
-                  ? "border-primary/50 bg-primary/10 shadow-[0_0_12px_hsl(var(--primary)/0.15)]"
-                  : "border-border/20 bg-muted/20 hover:bg-muted/30 hover:border-border/40"
+                  ? "is-today"
+                  : flow.net > 0 ? "is-income" : flow.net < 0 ? "is-expense" : ""
               )}
             >
               <span className={cn(
-                "text-xs sm:text-sm font-semibold leading-none",
-                isCurrentDay ? "text-primary" : "text-foreground/80"
+                isCurrentDay ? "text-primary" : ""
               )}>
                 {day}
               </span>
               <span className={cn(
-                "text-[8px] sm:text-[10px] leading-none mt-0.5",
-                expense > 0 ? "text-destructive/80 font-medium" : "text-muted-foreground/50"
+                flow.net > 0 ? "text-emerald-300" : flow.net < 0 ? "text-rose-400" : ""
               )}>
-                {expense > 0 ? `${currencySymbol}${formatAmount(expense)}` : "0"}
+                {flow.net === 0 ? "0" : `${flow.net > 0 ? "+" : "−"}${currencySymbol}${formatAmount(Math.abs(flow.net))}`}
               </span>
             </div>
           );
         })}
+      </div>
+      <div className="flowstate-calendar-footer">
+        <div className="flowstate-calendar-legend"><span><i className="expense" />Expense day</span><span><i className="income" />Income day</span><span><i className="today" />Today</span></div>
+        <span>{format(currentMonth, "MMMM")} total · <b className="expense">−{currencySymbol}{formatAmount(monthTotals.expense)} spent</b> · <b className="income">{currencySymbol}{formatAmount(monthTotals.income)} in</b></span>
       </div>
     </div>
   );

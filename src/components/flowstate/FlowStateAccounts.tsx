@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, Wallet, CreditCard, Smartphone, Bitcoin, Trash2, Loader2, Star, Check } from "lucide-react";
+import { Plus, Wallet, CreditCard, Smartphone, Bitcoin, Trash2, Loader2, Star, Check } from "@/components/flowstate/solarIcons";
 import { CurrencyDisplay } from "./ui/CurrencyDisplay";
 import { AddAccountDialog } from "./AddAccountDialog";
 import { Badge } from "@/components/ui/badge";
@@ -66,27 +66,27 @@ export function FlowStateAccounts({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flowstate-accounts-view space-y-[14px]">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold">Your Accounts</h3>
           <p className="text-xs text-muted-foreground">Manage your financial accounts</p>
         </div>
-        <Button size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
+        <Button size="sm" className="flowstate-accent-action gap-1.5" onClick={() => setDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Add Account
         </Button>
       </div>
 
       {/* Total Balance */}
-      <div className="rounded-xl border border-border/50 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-4">
+      <div className="flowstate-glass flowstate-account-total">
         <p className="text-xs text-muted-foreground font-medium mb-1">Total Balance</p>
         <CurrencyDisplay amount={totalBalance} currency="MMK" size="lg" />
       </div>
 
       {/* Account Cards */}
-      <div className="grid gap-3">
+      <div className="flowstate-glass flowstate-account-list">
         {accounts.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Wallet className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -103,7 +103,7 @@ export function FlowStateAccounts({
               <div
                 key={account.id}
                 className={cn(
-                  "flex items-center gap-3 p-3 rounded-xl border bg-card/50 backdrop-blur-sm hover:bg-card/80 transition-all",
+                  "flowstate-account-row",
                   account.is_default 
                     ? "border-primary/50 ring-1 ring-primary/20" 
                     : "border-border/50"
